@@ -14,7 +14,7 @@ To start a new module from it:
    ```
    modulename=$(basename $(pwd) | sed 's/^ns8-//') &&
    git mv imageroot/systemd/user/dependencytrack.service imageroot/systemd/user/${modulename}.service &&
-   git mv imageroot/systemd/user/dependencytrack-app.service imageroot/systemd/user/${modulename}-app.service && 
+   git mv imageroot/systemd/user/dependencytrack-apiserver.service imageroot/systemd/user/${modulename}-app.service && 
    git mv tests/dependencytrack.robot tests/${modulename}.robot &&
    sed -i "s/dependencytrack/${modulename}/g" $(find .github/ * -type f) &&
    git commit -a -m "Repository initialization"
@@ -130,12 +130,12 @@ podman ps
 CONTAINER ID  IMAGE                                      COMMAND               CREATED        STATUS        PORTS                    NAMES
 d292c6ff28e9  localhost/podman-pause:4.6.1-1702418000                          9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  80b8de25945f-infra
 d8df02bf6f4a  docker.io/library/postgres:15.5-alpine3.19          --character-set-s...  9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  postgresql-app
-9e58e5bd676f  docker.io/library/nginx:stable-alpine3.17  nginx -g daemon o...  9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  dependencytrack-app
+9e58e5bd676f  docker.io/library/nginx:stable-alpine3.17  nginx -g daemon o...  9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  dependencytrack-apiserver
 ```
 
 you can see what environment variable is inside the container
 ```
-podman exec  dependencytrack-app env
+podman exec  dependencytrack-apiserver env
 TERM=xterm
 container=podman
 NGINX_VERSION=1.24.0
@@ -150,7 +150,7 @@ HOME=/root
 you can run a shell inside the container
 
 ```
-podman exec -ti   dependencytrack-app sh
+podman exec -ti   dependencytrack-apiserver sh
 / # 
 ```
 ## Testing

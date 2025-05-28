@@ -15,13 +15,12 @@ EnvironmentFile=-%S/state/smarthost.env
 WorkingDirectory=%S/state
 Restart=always
 TimeoutStopSec=70
-ExecStartPre=/bin/mkdir -p config
 ExecStartPre=/bin/rm -f %t/dependencytrack-frontend.pid %t/dependencytrack-frontend.ctr-id
 ExecStartPre=-runagent discover-smarthost
 ExecStart=/usr/bin/podman run --conmon-pidfile %t/dependencytrack-frontend.pid \
     --cidfile %t/dependencytrack-frontend.ctr-id --cgroups=no-conmon \
     --pod-id-file %t/dependencytrack.pod-id --replace -d --name  dependencytrack-frontend \
-    --env API_BASE_URL="https://$VIRTUAL_HOST/api" \
+    --env API_BASE_URL="https://${TRAEFIK_HOST}/api" \
     ${FRONTEND_IMAGE}
 ExecStop=/usr/bin/podman stop --ignore --cidfile %t/dependencytrack-frontend.ctr-id -t 10
 ExecReload=/usr/bin/podman kill -s HUP dependencytrack-frontend

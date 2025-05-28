@@ -23,7 +23,7 @@ ExecStart=/usr/bin/podman run --conmon-pidfile %t/dependencytrack-apiserver.pid 
     --cidfile %t/dependencytrack-apiserver.ctr-id --cgroups=no-conmon \
     --pod-id-file %t/dependencytrack.pod-id --replace -d --name  dependencytrack-apiserver \
     --env ALPINE_DATABASE_MODE="external" \
-    --env ALPINE_DATABASE_URL="jdbc:127.0.0.1://dtrack-postgres:5432/dtrack" \
+    --env ALPINE_DATABASE_URL="jdbc:postgresql://127.0.0.1:5432/dtrack" \
     --env ALPINE_DATABASE_DRIVER="org.postgresql.Driver" \
     --env ALPINE_DATABASE_USERNAME="dtrack" \
     --env ALPINE_DATABASE_PASSWORD=${POSTGRES_TOKEN} \

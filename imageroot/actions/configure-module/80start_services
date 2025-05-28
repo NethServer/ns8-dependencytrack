@@ -13,5 +13,14 @@ exec 1>&2
 
 touch smarthost.env
 
-systemctl --user enable dependencytrack.service
-systemctl --user restart dependencytrack.service
+systemctl --user enable \
+    postgresql-app.service \
+    dependencytrack-apiserver.service \
+    trivy-app.service \
+    dependencytrack-frontend.service
+
+systemctl --user restart \
+    postgresql-app.service \
+    dependencytrack-apiserver.service \
+    trivy-app.service \
+    dependencytrack-frontend.service

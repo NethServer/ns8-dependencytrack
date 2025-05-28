@@ -5,8 +5,7 @@
 
 [Unit]
 Description=Podman  dependencytrack-frontend.service
-BindsTo=dependencytrack.service
-After=dependencytrack.service postgresql-app.service dependencytrack-apiserver.service trivy-app.service
+After=postgresql-app.service dependencytrack-apiserver.service trivy-app.service
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
@@ -19,8 +18,9 @@ ExecStartPre=/bin/rm -f %t/dependencytrack-frontend.pid %t/dependencytrack-front
 ExecStartPre=-runagent discover-smarthost
 ExecStart=/usr/bin/podman run --conmon-pidfile %t/dependencytrack-frontend.pid \
     --cidfile %t/dependencytrack-frontend.ctr-id --cgroups=no-conmon \
-    --pod-id-file %t/dependencytrack.pod-id --replace -d --name  dependencytrack-frontend \
-    --env API_BASE_URL="https://${TRAEFIK_HOST}/api" \
+    --network=dtrack-net --replace -d --name  dependencytrack-frontend \
+    --publish 127.0.0.1:${TCP_PORT}:8080 \
+    --env API_BASE_URL="http://dependencytrack-apiserver:8080/api" \
     ${FRONTEND_IMAGE}
 ExecStop=/usr/bin/podman stop --ignore --cidfile %t/dependencytrack-frontend.ctr-id -t 10
 ExecReload=/usr/bin/podman kill -s HUP dependencytrack-frontend

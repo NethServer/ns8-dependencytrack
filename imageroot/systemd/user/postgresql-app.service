@@ -5,8 +5,7 @@
 
 [Unit]
 Description=Podman postgresql-app.service
-BindsTo=dependencytrack.service
-After=dependencytrack.service
+Before=dependencytrack-apiserver.service dependencytrack-frontend.service trivy-app.service
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
@@ -18,7 +17,7 @@ ExecStartPre=/bin/rm -f %t/postgresql-app.pid %t/postgresql-app.ctr-id
 ExecStartPre=/bin/mkdir -p %S/state/restore/
 ExecStart=/usr/bin/podman run --conmon-pidfile %t/postgresql-app.pid \
     --cidfile %t/postgresql-app.ctr-id --cgroups=no-conmon \
-    --pod-id-file %t/dependencytrack.pod-id --replace -d --name postgresql-app \
+    --network=dtrack-net --replace -d --name postgresql-app \
     --env-file=%S/state/environment \
     --volume postgres-data:/var/lib/postgresql/data:Z \
     --volume %S/state/restore/:/docker-entrypoint-initdb.d/:Z \

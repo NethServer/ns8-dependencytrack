@@ -5,8 +5,8 @@
 
 [Unit]
 Description=Podman trivy-app.service
-BindsTo=dependencytrack.service
-After=dependencytrack.service
+After=postgresql-app.service dependencytrack-apiserver.service
+Before=dependencytrack-frontend.service
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
@@ -18,7 +18,7 @@ ExecStartPre=/bin/rm -f %t/trivy-app.pid %t/trivy-app.ctr-id
 ExecStartPre=/bin/mkdir -p %S/state/restore/
 ExecStart=/usr/bin/podman run --conmon-pidfile %t/trivy-app.pid \
     --cidfile %t/trivy-app.ctr-id --cgroups=no-conmon \
-    --pod-id-file %t/dependencytrack.pod-id --replace -d --name trivy-app \
+    --network=dtrack-net --replace -d --name trivy-app \
     --env TRIVY_TOKEN=${TRIVY_TOKEN} \
     --volume trivy-cache:/root/.cache/trivy \
     ${TRIVY_IMAGE} server --listen :8282 --token ${TRIVY_TOKEN}

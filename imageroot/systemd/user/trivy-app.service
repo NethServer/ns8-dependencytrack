@@ -19,7 +19,7 @@ ExecStartPre=/bin/mkdir -p %S/state/restore/
 ExecStart=/usr/bin/podman run --conmon-pidfile %t/trivy-app.pid \
     --cidfile %t/trivy-app.ctr-id --cgroups=no-conmon \
     --pod-id-file %t/dependencytrack.pod-id --replace -d --name trivy-app \
-    --env TRIVY_TOKEN=${TRIVY_TOKEN}
+    --env TRIVY_TOKEN=${TRIVY_TOKEN} \
     --volume trivy-cache:/root/.cache/trivy \
     ${TRIVY_IMAGE} server --listen :8282 --token ${TRIVY_TOKEN}
 ExecStartPost=/usr/bin/bash -c "while ! podman  exec trivy-app psql -U postgres -d dependencytrack ;  do sleep 5 ; done"

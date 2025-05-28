@@ -23,7 +23,7 @@ ExecStart=/usr/bin/podman run --conmon-pidfile %t/postgresql-app.pid \
     --volume postgres-data:/var/lib/postgresql/data:Z \
     --volume %S/state/restore/:/docker-entrypoint-initdb.d/:Z \
     --env POSTGRES_DB="dtrack" \
-    --env POSTGRES_USER="dtrack" \
+    --env POSTGRES_USER="postgres" \
     --env POSTGRES_PASSWORD=${POSTGRES_TOKEN} \
     ${POSTGRES_IMAGE}
 ExecStartPost=/usr/bin/bash -c "while ! podman  exec postgresql-app psql -U postgres -d dependencytrack ;  do sleep 5 ; done"

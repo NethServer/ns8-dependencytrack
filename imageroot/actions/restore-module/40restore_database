@@ -31,7 +31,7 @@ podman run \
     --volume=./restore:/docker-entrypoint-initdb.d/:Z \
     --volume=postgres-data:/var/lib/postgresql/data:Z \
     --replace --name=restore_db \
-    --env POSTGRES_USER=dtrack \
+    --env POSTGRES_USER=postgres \
     --env POSTGRES_PASSWORD=${POSTGRES_TOKEN} \
     --env POSTGRES_DB=dtrack \
     --env TZ=UTC \

@@ -1,0 +1,33 @@
+#
+# Copyright (C) 2025 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+[Unit]
+Description=Podman trivy-app.service
+After=postgresql-app.service dependencytrack-apiserver.service dependencytrack.service
+Before=dependencytrack-frontend.service
+BindsTo=dependencytrack.service
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%S/state/environment
+EnvironmentFile=%S/state/secrets.env
+Restart=always
+TimeoutStopSec=70
+ExecStartPre=/bin/rm -f %t/trivy-app.pid %t/trivy-app.ctr-id
+ExecStartPre=/bin/mkdir -p %S/state/restore/
+ExecStart=/usr/bin/podman run --conmon-pidfile %t/trivy-app.pid \
+    --cidfile %t/trivy-app.ctr-id --cgroups=no-conmon \
+    --pod-id-file %t/dependencytrack.pod-id --replace -d --name trivy-app \
+    --env TRIVY_TOKEN=${TRIVY_TOKEN} \
+    --volume trivy-cache:/root/.cache/trivy \
+    ${TRIVY_IMAGE} server --listen :8282 --token ${TRIVY_TOKEN}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/trivy-app.ctr-id -t 10
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/trivy-app.ctr-id
+ExecReload=/usr/bin/podman kill -s HUP trivy-app
+SyslogIdentifier=%u
+PIDFile=%t/trivy-app.pid
+Type=forking
+
+[Install]
+WantedBy=default.target

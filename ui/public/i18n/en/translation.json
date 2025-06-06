@@ -38,7 +38,10 @@
     "instance_configuration": "Configure dependencytrack",
     "domain_already_used_in_traefik": "Domain already used in traefik",
     "host_pattern": "Must be a valid fully qualified domain name",
-    "host_format": "Must be a valid fully qualified domain name"
+    "host_format": "Must be a valid fully qualified domain name",
+    "ldap_domain": "LDAP domain",
+    "choose_ldap_domain": "Choose LDAP domain",
+    "choose_the_ldap_domain_to_use": "Choose the LDAP domain to use for authentication"
   },
   "about": {
     "title": "About"

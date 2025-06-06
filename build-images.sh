@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (C) 2023 Nethesis S.r.l.
+# Copyright (C) 2025 Nethesis S.r.l.
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
@@ -42,10 +42,10 @@ buildah add "${container}" ui/dist /ui
 # rootfull=0 === rootless container
 # tcp-ports-demand=1 number of tcp Port to reserve , 1 is the minimum, can be udp or tcp
 buildah config --entrypoint=/ \
-    --label="org.nethserver.authorizations=traefik@node:routeadm" \
+    --label="org.nethserver.authorizations=traefik@node:routeadm cluster:accountconsumer" \
     --label="org.nethserver.tcp-ports-demand=1" \
     --label="org.nethserver.rootfull=0" \
-    --label="org.nethserver.images=docker.io/postgres:15.8-alpine3.19 docker.io/nginx:1.27.1-alpine3.20" \
+    --label="org.nethserver.images=docker.io/postgres:17.5-alpine3.21 docker.io/dependencytrack/frontend:4.13.2 docker.io/dependencytrack/apiserver:4.13.2 docker.io/aquasec/trivy:0.62.1 docker.io/library/nginx:1.27.5-alpine" \
     "${container}"
 # Commit the image
 buildah commit "${container}" "${repobase}/${reponame}"

@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+
+#
+# Copyright (C) 2025 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# Find settings for LDAP service
+#
+
+import os
+import sys
+import json
+import agent
+from agent.ldapproxy import Ldapproxy
+
+udomname = os.environ.get('DT_LDAP_DOMAIN','')
+
+try:
+    odom = Ldapproxy().get_domain(udomname)
+    'host' in odom # Throw exception if odom is None
+except:
+    # During restore the domain could be unavailable. Use a fallback
+    # configuration, pointing to nowhere, just to set the variables.
+    # Once the domain becomes available, the event will fix them.
+    odom = {
+        'host': '127.0.0.1',
+        'port': 20000,
+        'schema': 'rfc2307',
+        'location': 'internal',
+        'base_dn': 'dc=DEPENDENcytrack,dc=invalid',
+        'bind_dn': 'cn=example,dc=dependencytrack,dc=invalid',
+        'bind_password': 'invalid',
+    }
+
+tmpfile = "discover.env." + str(os.getpid())
+
+with open(tmpfile, "w") as denv:
+    print('ALPINE_LDAP_ENABLED=true', file=denv)
+    print('ALPINE_LDAP_SERVER_URL=ldap://accountprovider:' + str(odom['port']), file=denv)
+    print('ALPINE_LDAP_BASEDN=' + odom['base_dn'], file=denv)
+    print('ALPINE_LDAP_SECURITY_AUTH=simple', file=denv)
+    print('ALPINE_LDAP_BIND_USERNAME=' + odom['bind_dn'], file=denv)
+    print('ALPINE_LDAP_BIND_PASSWORD=' + odom['bind_password'], file=denv)
+    print('ALPINE_LDAP_AUTH_USERNAME_FORMAT=%s', file=denv)
+    print('ALPINE_LDAP_USER_PROVISIONING=true', file=denv)
+    print('ALPINE_LDAP_TEAM_SYNCHRONIZATION=true', file=denv)
+    if odom['schema'] == 'rfc2307':
+        print('ALPINE_LDAP_ATTRIBUTE_NAME=uid', file=denv)
+        print('ALPINE_LDAP_ATTRIBUTE_EMAIL=mail', file=denv)
+        print('ALPINE_LDAP_GROUPS_FILTER=(&(objectClass=groupOfUniqueNames))', file=denv)
+        print('ALPINE_LDAP_USER_GROUPS_FILTER=(&(objectClass=groupOfUniqueNames)(uniqueMember={USER_DN}))', file=denv)
+        print('ALPINE_LDAP_GROUPS_SEARCH_FILTER=(&(objectClass=groupOfUniqueNames)(cn=*{SEARCH_TERM}*))', file=denv)
+        print('ALPINE_LDAP_USERS_SEARCH_FILTER=(&(objectClass=inetOrgPerson)(cn=*{SEARCH_TERM}*))', file=denv)
+    else:
+        print('ALPINE_LDAP_ATTRIBUTE_NAME=userPrincipalName', file=denv)
+        print('ALPINE_LDAP_ATTRIBUTE_EMAIL=mail', file=denv)
+        print('ALPINE_LDAP_GROUPS_FILTER=(&(objectClass=group)(objectCategory=Group))', file=denv)
+        print('ALPINE_LDAP_USER_GROUPS_FILTER=(member:1.2.840.113556.1.4.1941:={USER_DN})', file=denv)
+        print('ALPINE_LDAP_GROUPS_SEARCH_FILTER=(&(objectClass=group)(objectCategory=Group)(cn=*{SEARCH_TERM}*))', file=denv)
+        print('ALPINE_LDAP_USERS_SEARCH_FILTER=(&(objectClass=user)(objectCategory=Person)(cn=*{SEARCH_TERM}*))', file=denv)
+os.replace(tmpfile, "discovery.env")

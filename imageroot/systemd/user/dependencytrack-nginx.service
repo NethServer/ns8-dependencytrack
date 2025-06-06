@@ -1,0 +1,32 @@
+#
+# Copyright (C) 2025 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+[Unit]
+Description=Podman  dependencytrack-nginx.service
+After=postgresql-app.service dependencytrack-apiserver.service trivy-app.service dependencytrack.service
+Before= dependencytrack-frontend.service
+BindsTo=dependencytrack.service
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%S/state/environment
+EnvironmentFile=-%S/state/smarthost.env
+WorkingDirectory=%S/state
+Restart=always
+TimeoutStopSec=70
+ExecStartPre=/bin/rm -f %t/dependencytrack-nginx.pid %t/dependencytrack-nginx.ctr-id
+ExecStart=/usr/bin/podman run --conmon-pidfile %t/dependencytrack-nginx.pid \
+    --cidfile %t/dependencytrack-nginx.ctr-id --cgroups=no-conmon \
+    --pod-id-file %t/dependencytrack.pod-id --replace -d --name  dependencytrack-nginx \
+    --volume ./nginx/default.conf:/etc/nginx/conf.d/default.conf:Z \
+    ${NGINX_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/dependencytrack-nginx.ctr-id -t 10
+ExecReload=/usr/bin/podman kill -s HUP dependencytrack-nginx
+SyslogIdentifier=%u
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/dependencytrack-nginx.ctr-id
+PIDFile=%t/dependencytrack-nginx.pid
+Type=forking
+
+[Install]
+WantedBy=default.target

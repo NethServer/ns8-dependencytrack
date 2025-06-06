@@ -1,0 +1,43 @@
+#
+# Copyright (C) 2025 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+[Unit]
+Description=Podman  dependencytrack-apiserver.service
+Before=dependencytrack-frontend.service trivy-app.service dependencytrack-nginx.service
+BindsTo=dependencytrack.service
+After=dependencytrack.service postgresql-app.service
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%S/state/environment
+EnvironmentFile=-%S/state/smarthost.env
+EnvironmentFile=%S/state/secrets.env
+WorkingDirectory=%S/state
+Restart=always
+TimeoutStopSec=70
+ExecStartPre=-runagent discover-ldap
+ExecStartPre=/bin/mkdir -p config
+ExecStartPre=/bin/rm -f %t/dependencytrack-apiserver.pid %t/dependencytrack-apiserver.ctr-id
+ExecStart=/usr/bin/podman run --conmon-pidfile %t/dependencytrack-apiserver.pid \
+    --cidfile %t/dependencytrack-apiserver.ctr-id --cgroups=no-conmon \
+    --pod-id-file %t/dependencytrack.pod-id \
+    --replace -d --name  dependencytrack-apiserver \
+    --env ALPINE_DATABASE_MODE="external" \
+    --env ALPINE_DATABASE_URL="jdbc:postgresql://postgresql-app:5432/dependencytrack" \
+    --env ALPINE_DATABASE_DRIVER="org.postgresql.Driver" \
+    --env ALPINE_DATABASE_USERNAME="postgres" \
+    --env ALPINE_DATABASE_PASSWORD=${POSTGRES_TOKEN} \
+    --env EXTRA_JAVA_OPTIONS="-Xmx4G" \
+    --env-file ./discovery.env \
+    --volume dtrack-data:/data \
+    ${APISERVER_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/dependencytrack-apiserver.ctr-id -t 10
+ExecReload=/usr/bin/podman kill -s HUP dependencytrack-apiserver
+SyslogIdentifier=%u
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/dependencytrack-apiserver.ctr-id
+PIDFile=%t/dependencytrack-apiserver.pid
+Type=forking
+
+[Install]
+WantedBy=default.target

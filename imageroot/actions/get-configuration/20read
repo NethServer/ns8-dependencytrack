@@ -33,6 +33,9 @@ config["host"] = os.getenv("TRAEFIK_HOST","")
 config["lets_encrypt"] = os.getenv("TRAEFIK_LETS_ENCRYPT") == "True"
 config["ldap_domain"] = os.getenv("DT_LDAP_DOMAIN",'')
 config['domains_list'] = domains
+secrets = agent.read_envfile("secrets.env")
+config["trivy_token"] = secrets["TRIVY_TOKEN"]
+config["trivy_url"] = "http://127.0.0.1:8282"
 
 # Dump the configuration to stdout
 json.dump(config, fp=sys.stdout)

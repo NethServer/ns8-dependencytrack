@@ -70,7 +70,56 @@
             <cv-accordion ref="accordion" class="maxwidth mg-bottom">
               <cv-accordion-item :open="toggleAccordion[0]">
                 <template slot="title">{{ $t("settings.advanced") }}</template>
-                <template slot="content"> </template>
+                <template slot="content">
+                  <label>
+                    {{ $t("settings.trivy_url") }}
+                    <cv-tooltip
+                      alignment="start"
+                      direction="bottom"
+                      :tip="$t('settings.trivy_url_tooltip')"
+                      class="info"
+                    >
+                    </cv-tooltip>
+                  </label>
+                  <NsCodeSnippet
+                    :copyTooltip="$t('common.copy_to_clipboard')"
+                    :copy-feedback="$t('common.copied_to_clipboard')"
+                    :feedback-aria-label="$t('common.copied_to_clipboard')"
+                    :wrap-text="true"
+                    :moreText="$t('common.show_more')"
+                    :lessText="$t('common.show_less')"
+                    light
+                    hideExpandButton
+                    >{{ trivy_url }}</NsCodeSnippet
+                  >
+                  <label>
+                    {{ $t("settings.trivy_token") }}
+                    <cv-tooltip
+                      alignment="start"
+                      direction="bottom"
+                      :tip="$t('settings.trivy_token_tooltip')"
+                      class="info"
+                    >
+                    </cv-tooltip>
+                  </label>
+                  <cv-link class="mg-left" @click="toggleSetupKey">
+                    {{
+                      isShownSetupKey ? $t("common.hide") : $t("common.show")
+                    }}
+                  </cv-link>
+                  <NsCodeSnippet
+                    v-if="isShownSetupKey"
+                    :copyTooltip="$t('common.copy_to_clipboard')"
+                    :copy-feedback="$t('common.copied_to_clipboard')"
+                    :feedback-aria-label="$t('common.copied_to_clipboard')"
+                    :wrap-text="true"
+                    :moreText="$t('common.show_more')"
+                    :lessText="$t('common.show_less')"
+                    light
+                    hideExpandButton
+                    >{{ trivy_token }}</NsCodeSnippet
+                  >
+                </template>
               </cv-accordion-item>
             </cv-accordion>
             <cv-row v-if="error.configureModule">
@@ -130,6 +179,9 @@ export default {
       isLetsEncryptEnabled: false,
       ldap_domain: "",
       domains_list: [],
+      trivy_url: "",
+      trivy_token: "",
+      isShownSetupKey: false,
       loading: {
         getConfiguration: false,
         configureModule: false,
@@ -160,6 +212,10 @@ export default {
     next();
   },
   methods: {
+    toggleSetupKey() {
+      this.isShownSetupKey = !this.isShownSetupKey;
+    },
+
     async getConfiguration() {
       this.loading.getConfiguration = true;
       this.error.getConfiguration = "";
@@ -207,6 +263,8 @@ export default {
       this.host = config.host;
       this.isLetsEncryptEnabled = config.lets_encrypt;
       this.domains_list = config.domains_list;
+      this.trivy_url = config.trivy_url;
+      this.trivy_token = config.trivy_token;
 
       // force to reload value after dom update
       this.$nextTick(() => {
@@ -330,5 +388,8 @@ export default {
 
 .maxwidth {
   max-width: 38rem;
+}
+.mg-left {
+  margin-left: $spacing-05;
 }
 </style>

@@ -2,7 +2,13 @@
   "common": {
     "required": "Required",
     "work_in_progress": "Work in progress",
-    "processing": "Processing..."
+    "processing": "Processing...",
+    "copied_to_clipboard": "Copied to clipboard",
+    "copy_to_clipboard": "Copy to clipboard",
+    "hide": "Hide",
+    "show": "Show",
+    "show_more": "Show more",
+    "show_less": "Show less"
   },
   "status": {
     "title": "Status",
@@ -41,7 +47,11 @@
     "host_format": "Must be a valid fully qualified domain name",
     "ldap_domain": "LDAP domain",
     "choose_ldap_domain": "Choose LDAP domain",
-    "choose_the_ldap_domain_to_use": "Choose the LDAP domain to use for authentication"
+    "choose_the_ldap_domain_to_use": "Choose the LDAP domain to use for authentication",
+    "trivy_token": "Trivy token",
+    "trivy_url": "Trivy URL",
+    "trivy_url_tooltip": "The URL of the Trivy server to use for vulnerability scanning. it must be set inside the dependencytrack user interface.",
+    "trivy_token_tooltip": "The Trivy token to use for vulnerability scanning. it must be set inside the dependencytrack user interface."
   },
   "about": {
     "title": "About"

@@ -30,6 +30,17 @@
             "type": "string",
             "title": "LDAP domain",
             "description": "The LDAP domain to use for authentication, like 'example.com'."
+        },
+        "trivy_token": {
+            "type": "string",
+            "title": "Trivy token",
+            "description": "The Trivy token to use for vulnerability scanning."
+        },
+        "trivy_url": {
+            "type": "string",
+            "title": "Trivy URL",
+            "description": "The URL of the Trivy server to use for vulnerability scanning.",
+            "format": "uri"
         }
     }
 }

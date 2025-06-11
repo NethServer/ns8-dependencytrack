@@ -1,19 +1,19 @@
 {
   "name": "dependencytrack",
   "description": {
-    "en": "My dependencytrack module"
+    "en": "open-source platform for tracking and managing software dependencies"
   },
   "categories": [],
   "authors": [
     {
-      "name": "Name Surname",
-      "email": "author@yourmail.org"
+      "name": "stephane de Labrusse",
+      "email": "stephdl@de-labrusse.fr"
     }
   ],
   "docs": {
-    "documentation_url": "https://docs.dependencytrack.com/",
+    "documentation_url": "https://docs.dependencytrack.org/",
     "bug_url": "https://github.com/NethServer/dev",
-    "code_url": "https://github.com/author/ns8-dependencytrack"
+    "code_url": "https://github.com/NethServer/ns8-dependencytrack"
   },
   "source": "ghcr.io/nethserver/dependencytrack"
 }

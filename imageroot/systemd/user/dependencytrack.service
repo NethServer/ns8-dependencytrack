@@ -1,17 +1,12 @@
 #
-# Copyright (C) 2022 Nethesis S.r.l.
-# SPDX-License-Identifier: GPL-3.0-or-later
-#
-
-#
 # This systemd unit starts a dependencytrack instance using Podman.
 # Most parts of this file come from podman-generate-systemd.
 #
 
 [Unit]
 Description=Podman dependencytrack.service
-Requires=postgresql-app.service dependencytrack-app.service
-Before=postgresql-app.service dependencytrack-app.service
+Requires=postgresql-app.service dependencytrack-frontend.service dependencytrack-apiserver.service dependencytrack-nginx.service trivy-app.service
+Before=postgresql-app.service dependencytrack-frontend.service dependencytrack-apiserver.service dependencytrack-nginx.service trivy-app.service
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
@@ -23,6 +18,8 @@ ExecStartPre=/usr/bin/podman pod create --infra-conmon-pidfile %t/dependencytrac
     --pod-id-file %t/dependencytrack.pod-id \
     --name dependencytrack \
     --publish 127.0.0.1:${TCP_PORT}:80 \
+    --network=slirp4netns:allow_host_loopback=true \
+    --add-host=accountprovider:10.0.2.2 \
     --replace
 ExecStart=/usr/bin/podman pod start --pod-id-file %t/dependencytrack.pod-id
 ExecStop=/usr/bin/podman pod stop --ignore --pod-id-file %t/dependencytrack.pod-id -t 10

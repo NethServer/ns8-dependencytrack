@@ -14,7 +14,7 @@ To start a new module from it:
    ```
    modulename=$(basename $(pwd) | sed 's/^ns8-//') &&
    git mv imageroot/systemd/user/dependencytrack.service imageroot/systemd/user/${modulename}.service &&
-   git mv imageroot/systemd/user/dependencytrack-app.service imageroot/systemd/user/${modulename}-app.service && 
+   git mv imageroot/systemd/user/dependencytrack-apiserver.service imageroot/systemd/user/${modulename}-app.service && 
    git mv tests/dependencytrack.robot tests/${modulename}.robot &&
    sed -i "s/dependencytrack/${modulename}/g" $(find .github/ * -type f) &&
    git commit -a -m "Repository initialization"
@@ -46,8 +46,8 @@ Let's assume that the mattermost instance is named `dependencytrack1`.
 
 Launch `configure-module`, by setting the following parameters:
 - `host`: a fully qualified domain name for the application
-- `http2https`: enable or disable HTTP to HTTPS redirection (true/false)
 - `lets_encrypt`: enable or disable Let's Encrypt certificate (true/false)
+- `ldap_domain`: LDAP domain to authenticate users
 
 
 Example:
@@ -56,8 +56,8 @@ Example:
 api-cli run configure-module --agent module/dependencytrack1 --data - <<EOF
 {
   "host": "dependencytrack.domain.com",
-  "http2https": true,
   "lets_encrypt": false
+  "ldap_domain": "domain.com"
 }
 EOF
 ```
@@ -85,25 +85,6 @@ To Update the instance:
 
     api-cli run update-module --data '{"module_url":"ghcr.io/nethserver/dependencytrack:latest","instances":["dependencytrack1"],"force":true}'
 
-## Smarthost setting discovery
-
-Some configuration settings, like the smarthost setup, are not part of the
-`configure-module` action input: they are discovered by looking at some
-Redis keys.  To ensure the module is always up-to-date with the
-centralized [smarthost
-setup](https://nethserver.github.io/ns8-core/core/smarthost/) every time
-dependencytrack starts, the command `bin/discover-smarthost` runs and refreshes
-the `state/smarthost.env` file with fresh values from Redis.
-
-Furthermore if smarthost setup is changed when dependencytrack is already
-running, the event handler `events/smarthost-changed/10reload_services`
-restarts the main module service.
-
-See also the `systemd/user/dependencytrack.service` file.
-
-This setting discovery is just an example to understand how the module is
-expected to work: it can be rewritten or discarded completely.
-
 ## Debug
 
 some CLI are needed to debug
@@ -130,12 +111,12 @@ podman ps
 CONTAINER ID  IMAGE                                      COMMAND               CREATED        STATUS        PORTS                    NAMES
 d292c6ff28e9  localhost/podman-pause:4.6.1-1702418000                          9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  80b8de25945f-infra
 d8df02bf6f4a  docker.io/library/postgres:15.5-alpine3.19          --character-set-s...  9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  postgresql-app
-9e58e5bd676f  docker.io/library/nginx:stable-alpine3.17  nginx -g daemon o...  9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  dependencytrack-app
+9e58e5bd676f  docker.io/library/nginx:stable-alpine3.17  nginx -g daemon o...  9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  dependencytrack-apiserver
 ```
 
 you can see what environment variable is inside the container
 ```
-podman exec  dependencytrack-app env
+podman exec  dependencytrack-apiserver env
 TERM=xterm
 container=podman
 NGINX_VERSION=1.24.0
@@ -150,7 +131,7 @@ HOME=/root
 you can run a shell inside the container
 
 ```
-podman exec -ti   dependencytrack-app sh
+podman exec -ti   dependencytrack-apiserver sh
 / # 
 ```
 ## Testing

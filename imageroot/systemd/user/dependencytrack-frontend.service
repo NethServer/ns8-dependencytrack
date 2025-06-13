@@ -1,0 +1,33 @@
+#
+# Copyright (C) 2025 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+[Unit]
+Description=Podman  dependencytrack-frontend.service
+After=postgresql-app.service dependencytrack-apiserver.service trivy-app.service dependencytrack-nginx.service dependencytrack.service
+BindsTo=dependencytrack.service
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%S/state/environment
+EnvironmentFile=-%S/state/smarthost.env
+WorkingDirectory=%S/state
+Restart=always
+TimeoutStopSec=70
+ExecStartPre=/bin/rm -f %t/dependencytrack-frontend.pid %t/dependencytrack-frontend.ctr-id
+ExecStart=/usr/bin/podman run --conmon-pidfile %t/dependencytrack-frontend.pid \
+    --cidfile %t/dependencytrack-frontend.ctr-id --cgroups=no-conmon \
+    --pod-id-file %t/dependencytrack.pod-id --replace -d --name  dependencytrack-frontend \
+    --volume ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:Z \
+    --env TRAEFIK_HOST=${TRAEFIK_HOST} \
+    --env API_BASE_URL="https://${TRAEFIK_HOST}" \
+    ${FRONTEND_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/dependencytrack-frontend.ctr-id -t 10
+ExecReload=/usr/bin/podman kill -s HUP dependencytrack-frontend
+SyslogIdentifier=%u
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/dependencytrack-frontend.ctr-id
+PIDFile=%t/dependencytrack-frontend.pid
+Type=forking
+
+[Install]
+WantedBy=default.target

@@ -1,5 +1,5 @@
 <!--
-  Copyright (C) 2022 Nethesis S.r.l.
+  Copyright (C) 2025 Nethesis S.r.l.
   SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <template>
@@ -47,25 +47,78 @@
                 $t("settings.enabled")
               }}</template>
             </cv-toggle>
-            <cv-toggle
-              value="httpToHttps"
-              :label="$t('settings.http_to_https')"
-              v-model="isHttpToHttpsEnabled"
+            <NsComboBox
+              v-model.trim="ldap_domain"
+              :autoFilter="true"
+              :autoHighlight="true"
+              :title="$t('settings.ldap_domain')"
+              :label="$t('settings.choose_ldap_domain')"
+              :options="domains_list"
+              :acceptUserInput="false"
+              :showItemType="true"
+              :invalid-message="$t(error.ldap_domain)"
               :disabled="loading.getConfiguration || loading.configureModule"
-              class="mg-bottom"
+              tooltipAlignment="start"
+              tooltipDirection="top"
+              ref="ldap_domain"
             >
-              <template slot="text-left">{{
-                $t("settings.disabled")
-              }}</template>
-              <template slot="text-right">{{
-                $t("settings.enabled")
-              }}</template>
-            </cv-toggle>
-              <!-- advanced options -->
+              <template slot="tooltip">
+                {{ $t("settings.choose_the_ldap_domain_to_use") }}
+              </template>
+            </NsComboBox>
+            <!-- advanced options -->
             <cv-accordion ref="accordion" class="maxwidth mg-bottom">
               <cv-accordion-item :open="toggleAccordion[0]">
                 <template slot="title">{{ $t("settings.advanced") }}</template>
                 <template slot="content">
+                  <label>
+                    {{ $t("settings.trivy_url") }}
+                    <cv-tooltip
+                      alignment="start"
+                      direction="bottom"
+                      :tip="$t('settings.trivy_url_tooltip')"
+                      class="info"
+                    >
+                    </cv-tooltip>
+                  </label>
+                  <NsCodeSnippet
+                    :copyTooltip="$t('common.copy_to_clipboard')"
+                    :copy-feedback="$t('common.copied_to_clipboard')"
+                    :feedback-aria-label="$t('common.copied_to_clipboard')"
+                    :wrap-text="true"
+                    :moreText="$t('common.show_more')"
+                    :lessText="$t('common.show_less')"
+                    light
+                    hideExpandButton
+                    >{{ trivy_url }}</NsCodeSnippet
+                  >
+                  <label>
+                    {{ $t("settings.trivy_token") }}
+                    <cv-tooltip
+                      alignment="start"
+                      direction="bottom"
+                      :tip="$t('settings.trivy_token_tooltip')"
+                      class="info"
+                    >
+                    </cv-tooltip>
+                  </label>
+                  <cv-link class="mg-left" @click="toggleSetupKey">
+                    {{
+                      isShownSetupKey ? $t("common.hide") : $t("common.show")
+                    }}
+                  </cv-link>
+                  <NsCodeSnippet
+                    v-if="isShownSetupKey"
+                    :copyTooltip="$t('common.copy_to_clipboard')"
+                    :copy-feedback="$t('common.copied_to_clipboard')"
+                    :feedback-aria-label="$t('common.copied_to_clipboard')"
+                    :wrap-text="true"
+                    :moreText="$t('common.show_more')"
+                    :lessText="$t('common.show_less')"
+                    light
+                    hideExpandButton
+                    >{{ trivy_token }}</NsCodeSnippet
+                  >
                 </template>
               </cv-accordion-item>
             </cv-accordion>
@@ -124,7 +177,11 @@ export default {
       urlCheckInterval: null,
       host: "",
       isLetsEncryptEnabled: false,
-      isHttpToHttpsEnabled: true,
+      ldap_domain: "",
+      domains_list: [],
+      trivy_url: "",
+      trivy_token: "",
+      isShownSetupKey: false,
       loading: {
         getConfiguration: false,
         configureModule: false,
@@ -134,7 +191,7 @@ export default {
         configureModule: "",
         host: "",
         lets_encrypt: "",
-        http2https: "",
+        ldap_domain: "",
       },
     };
   },
@@ -155,6 +212,10 @@ export default {
     next();
   },
   methods: {
+    toggleSetupKey() {
+      this.isShownSetupKey = !this.isShownSetupKey;
+    },
+
     async getConfiguration() {
       this.loading.getConfiguration = true;
       this.error.getConfiguration = "";
@@ -201,8 +262,14 @@ export default {
       const config = taskResult.output;
       this.host = config.host;
       this.isLetsEncryptEnabled = config.lets_encrypt;
-      this.isHttpToHttpsEnabled = config.http2https;
+      this.domains_list = config.domains_list;
+      this.trivy_url = config.trivy_url;
+      this.trivy_token = config.trivy_token;
 
+      // force to reload value after dom update
+      this.$nextTick(() => {
+        this.ldap_domain = config.ldap_domain;
+      });
       this.loading.getConfiguration = false;
       this.focusElement("host");
     },
@@ -217,6 +284,14 @@ export default {
           this.focusElement("host");
         }
         isValidationOk = false;
+      }
+      if (!this.ldap_domain) {
+        this.error.ldap_domain = this.$t("common.required");
+
+        if (isValidationOk) {
+          this.focusElement("ldap_domain");
+          isValidationOk = false;
+        }
       }
       return isValidationOk;
     },
@@ -270,7 +345,7 @@ export default {
           data: {
             host: this.host,
             lets_encrypt: this.isLetsEncryptEnabled,
-            http2https: this.isHttpToHttpsEnabled,
+            ldap_domain: this.ldap_domain,
           },
           extra: {
             title: this.$t("settings.instance_configuration", {
@@ -313,5 +388,8 @@ export default {
 
 .maxwidth {
   max-width: 38rem;
+}
+.mg-left {
+  margin-left: $spacing-05;
 }
 </style>

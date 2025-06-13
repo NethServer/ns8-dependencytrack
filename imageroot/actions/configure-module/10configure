@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+
+#
+# Copyright (C) 2025 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+import json
+import sys
+import agent
+
+# Try to parse the stdin as JSON.
+data = json.load(sys.stdin)
+
+ldap_domain = data.get("ldap_domain", "")
+agent.set_env("DT_LDAP_DOMAIN", ldap_domain)

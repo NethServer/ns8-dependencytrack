@@ -16,8 +16,6 @@ EnvironmentFile=%S/state/secrets.env
 WorkingDirectory=%S/state
 Restart=always
 TimeoutStopSec=70
-ExecStartPre=-runagent discover-ldap
-ExecStartPre=/bin/mkdir -p config
 ExecStartPre=/bin/rm -f %t/dependencytrack-apiserver.pid %t/dependencytrack-apiserver.ctr-id
 ExecStart=/usr/bin/podman run --conmon-pidfile %t/dependencytrack-apiserver.pid \
     --cidfile %t/dependencytrack-apiserver.ctr-id --cgroups=no-conmon \
@@ -29,7 +27,6 @@ ExecStart=/usr/bin/podman run --conmon-pidfile %t/dependencytrack-apiserver.pid 
     --env ALPINE_DATABASE_USERNAME="postgres" \
     --env ALPINE_DATABASE_PASSWORD=${POSTGRES_TOKEN} \
     --env EXTRA_JAVA_OPTIONS="-Xmx4G" \
-    --env-file ./discovery.env \
     --volume dtrack-data:/data \
     ${APISERVER_IMAGE}
 ExecStop=/usr/bin/podman stop --ignore --cidfile %t/dependencytrack-apiserver.ctr-id -t 10

@@ -16,7 +16,6 @@ original_environment = request['environment']
 for evar in [
         "TRAEFIK_HOST",
         "TRAEFIK_LETS_ENCRYPT",
-        "DT_LDAP_DOMAIN",
     ]:
     agent.set_env(evar, original_environment[evar])
 

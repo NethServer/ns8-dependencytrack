@@ -18,7 +18,6 @@ Let's assume that the mattermost instance is named `dependencytrack1`.
 Launch `configure-module`, by setting the following parameters:
 - `host`: a fully qualified domain name for the application
 - `lets_encrypt`: enable or disable Let's Encrypt certificate (true/false)
-- `ldap_domain`: LDAP domain to authenticate users
 
 
 Example:
@@ -28,7 +27,6 @@ api-cli run configure-module --agent module/dependencytrack1 --data - <<EOF
 {
   "host": "dependencytrack.domain.com",
   "lets_encrypt": false
-  "ldap_domain": "domain.com"
 }
 EOF
 ```

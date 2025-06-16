@@ -47,25 +47,6 @@
                 $t("settings.enabled")
               }}</template>
             </cv-toggle>
-            <NsComboBox
-              v-model.trim="ldap_domain"
-              :autoFilter="true"
-              :autoHighlight="true"
-              :title="$t('settings.ldap_domain')"
-              :label="$t('settings.choose_ldap_domain')"
-              :options="domains_list"
-              :acceptUserInput="false"
-              :showItemType="true"
-              :invalid-message="$t(error.ldap_domain)"
-              :disabled="loading.getConfiguration || loading.configureModule"
-              tooltipAlignment="start"
-              tooltipDirection="top"
-              ref="ldap_domain"
-            >
-              <template slot="tooltip">
-                {{ $t("settings.choose_the_ldap_domain_to_use") }}
-              </template>
-            </NsComboBox>
             <!-- advanced options -->
             <cv-accordion ref="accordion" class="maxwidth mg-bottom">
               <cv-accordion-item :open="toggleAccordion[0]">
@@ -177,8 +158,6 @@ export default {
       urlCheckInterval: null,
       host: "",
       isLetsEncryptEnabled: false,
-      ldap_domain: "",
-      domains_list: [],
       trivy_url: "",
       trivy_token: "",
       isShownSetupKey: false,
@@ -191,7 +170,6 @@ export default {
         configureModule: "",
         host: "",
         lets_encrypt: "",
-        ldap_domain: "",
       },
     };
   },
@@ -262,14 +240,8 @@ export default {
       const config = taskResult.output;
       this.host = config.host;
       this.isLetsEncryptEnabled = config.lets_encrypt;
-      this.domains_list = config.domains_list;
       this.trivy_url = config.trivy_url;
       this.trivy_token = config.trivy_token;
-
-      // force to reload value after dom update
-      this.$nextTick(() => {
-        this.ldap_domain = config.ldap_domain;
-      });
       this.loading.getConfiguration = false;
       this.focusElement("host");
     },
@@ -284,14 +256,6 @@ export default {
           this.focusElement("host");
         }
         isValidationOk = false;
-      }
-      if (!this.ldap_domain) {
-        this.error.ldap_domain = this.$t("common.required");
-
-        if (isValidationOk) {
-          this.focusElement("ldap_domain");
-          isValidationOk = false;
-        }
       }
       return isValidationOk;
     },
@@ -345,7 +309,6 @@ export default {
           data: {
             host: this.host,
             lets_encrypt: this.isLetsEncryptEnabled,
-            ldap_domain: this.ldap_domain,
           },
           extra: {
             title: this.$t("settings.instance_configuration", {

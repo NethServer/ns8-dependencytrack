@@ -13,17 +13,6 @@ import os
 import sys
 import json
 import agent
-from agent.ldapproxy import Ldapproxy
-
-# retrieve LDAP domains list
-lp = Ldapproxy()
-domains = []
-for key in lp.get_domains_list():
-    domains.append({
-        "name": key,
-        "label": key,
-        "value": key,
-    })
 
 # Prepare return variable
 config = {}
@@ -31,8 +20,6 @@ config = {}
 # Read current configuration from the environment file
 config["host"] = os.getenv("TRAEFIK_HOST","")
 config["lets_encrypt"] = os.getenv("TRAEFIK_LETS_ENCRYPT") == "True"
-config["ldap_domain"] = os.getenv("DT_LDAP_DOMAIN",'')
-config['domains_list'] = domains
 secrets = agent.read_envfile("secrets.env")
 config["trivy_token"] = secrets["TRIVY_TOKEN"]
 config["trivy_url"] = "http://127.0.0.1:8282"

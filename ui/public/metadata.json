@@ -1,12 +1,12 @@
 {
-  "name": "dependencytrack",
+  "name": "DependencyTrack",
   "description": {
-    "en": "open-source platform for tracking and managing software dependencies"
+    "en": "Open-source platform for tracking and managing software dependencies"
   },
   "categories": [],
   "authors": [
     {
-      "name": "stephane de Labrusse",
+      "name": "Stephane de Labrusse",
       "email": "stephdl@de-labrusse.fr"
     }
   ],

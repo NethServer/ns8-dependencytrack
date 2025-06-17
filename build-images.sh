@@ -35,7 +35,7 @@ buildah run \
 buildah add "${container}" imageroot /imageroot
 buildah add "${container}" ui/dist /ui
 buildah config --entrypoint=/ \
-    --label="org.nethserver.authorizations=traefik@node:routeadm cluster:accountconsumer" \
+    --label="org.nethserver.authorizations=traefik@node:routeadm" \
     --label="org.nethserver.tcp-ports-demand=1" \
     --label="org.nethserver.rootfull=0" \
     --label="org.nethserver.images=docker.io/postgres:17.5-alpine3.21 docker.io/dependencytrack/frontend:4.13.2 docker.io/dependencytrack/apiserver:4.13.2 docker.io/aquasec/trivy:0.63.0 docker.io/library/nginx:1.27.5-alpine" \

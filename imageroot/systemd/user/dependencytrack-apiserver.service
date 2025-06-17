@@ -11,7 +11,6 @@ After=dependencytrack.service postgresql-app.service
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
 EnvironmentFile=%S/state/environment
-EnvironmentFile=-%S/state/smarthost.env
 EnvironmentFile=%S/state/secrets.env
 WorkingDirectory=%S/state
 Restart=always

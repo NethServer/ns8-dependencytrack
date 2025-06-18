@@ -25,30 +25,30 @@
     "no_services": "No services",
     "no_images": "No images",
     "no_volumes": "No volumes",
-    "dependencytrack_webapp": "dependencytrack webapp",
+    "dependencytrack_webapp": "Web application",
     "not_configured": "Not configured",
-    "open_webapp": "Open dependencytrack",
+    "open_webapp": "Open Dependency-Track",
     "configure": "Configure"
   },
   "settings": {
     "title": "Settings",
     "configure_instance": "Configure {instance}",
     "save": "Save",
-    "dependencytrack_fqdn": "dependencytrack hostname (FQDN)",
-    "lets_encrypt": "Request LE Certificate",
+    "dependencytrack_fqdn": "Host name (FQDN)",
+    "lets_encrypt": "Request Let's Encrypt Certificate",
     "http_to_https": "Force HTTPS",
     "enabled": "Enabled",
     "disabled": "Disabled",
     "advanced": "Advanced",
     "configuring": "Configuring",
-    "instance_configuration": "Configure dependencytrack",
+    "instance_configuration": "Configure Dependency-Track",
     "domain_already_used_in_traefik": "Domain already used in traefik",
     "host_pattern": "Must be a valid fully qualified domain name",
     "host_format": "Must be a valid fully qualified domain name",
     "trivy_token": "Trivy token",
     "trivy_url": "Trivy URL",
-    "trivy_url_tooltip": "The URL of the Trivy server to use for vulnerability scanning. it must be set inside the dependencytrack user interface.",
-    "trivy_token_tooltip": "The Trivy token to use for vulnerability scanning. it must be set inside the dependencytrack user interface."
+    "trivy_url_tooltip": "The URL of the Trivy server to use for vulnerability scanning. it must be set inside the Dependency-Track user interface.",
+    "trivy_token_tooltip": "The Trivy token to use for vulnerability scanning. it must be set inside the Dependency-Track user interface."
   },
   "about": {
     "title": "About"

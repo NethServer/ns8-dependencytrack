@@ -38,7 +38,7 @@ buildah config --entrypoint=/ \
     --label="org.nethserver.authorizations=traefik@node:routeadm" \
     --label="org.nethserver.tcp-ports-demand=1" \
     --label="org.nethserver.rootfull=0" \
-    --label="org.nethserver.images=docker.io/postgres:17.5-alpine3.21 docker.io/dependencytrack/frontend:4.13.3 docker.io/dependencytrack/apiserver:4.13.3 docker.io/aquasec/trivy:0.65.0 docker.io/library/nginx:1.28.0-alpine" \
+    --label="org.nethserver.images=docker.io/postgres:17.5-alpine3.21 docker.io/dependencytrack/frontend:4.13.3 docker.io/dependencytrack/apiserver:4.13.3 docker.io/aquasec/trivy:0.65.0 docker.io/library/nginx:1.29.3-alpine" \
     "${container}"
 # Commit the image
 buildah commit "${container}" "${repobase}/${reponame}"

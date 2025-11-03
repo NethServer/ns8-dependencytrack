@@ -6,6 +6,11 @@
       "matchDatasources": ["docker"],
       "matchPackageNames": ["nginx"],
       "allowedVersions": "1.28.*"
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["postgres"],
+      "allowedVersions": "<= 17"
     }
   ]
 }

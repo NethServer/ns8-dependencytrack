@@ -1,4 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>NethServer/.github:ns8"]
+  "extends": ["local>NethServer/.github:ns8"],
+    "packageRules": [
+    {
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["nginx"],
+      "allowedVersions": "1.28.*"
+    }
+  ]
 }

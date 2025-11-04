@@ -34,6 +34,10 @@ Retrieve dependencytrack backend URL
 Check if dependencytrack works as expected
     Retry test    Backend URL is reachable
 
+Verify dependencytrack frontend title
+    ${output} =    Execute Command    curl -s ${backend_url}
+    Should Contain    ${output}    <title>Dependency-Track</title>
+
 Check if dependencytrack is removed correctly
     ${rc} =    Execute Command    remove-module --no-preserve ${module_id}
     ...    return_rc=True  return_stdout=False

@@ -11,4 +11,4 @@ Run task
     ELSE
         ${response} =    Set Variable    ${stdout}
     END
-    RETURN    ${response}
+    [Return]    ${response}

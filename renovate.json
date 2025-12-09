@@ -1,16 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>NethServer/.github:ns8"],
-    "packageRules": [
-    {
-      "matchDatasources": ["docker"],
-      "matchPackageNames": ["nginx"],
-      "allowedVersions": "1.28.*"
-    },
-    {
-      "matchDatasources": ["docker"],
-      "matchPackageNames": ["postgres"],
-      "allowedVersions": "<= 17"
-    }
+  "extends": [
+    "local>NethServer/.github:ns8"
   ]
 }

@@ -54,6 +54,23 @@ To Update the instance:
 
     api-cli run update-module --data '{"module_url":"ghcr.io/nethserver/dependencytrack:latest","instances":["dependencytrack1"],"force":true}'
 
+### Upgrading from Dependency-Track v4 to v5
+
+Dependency-Track v5 is not an in-place upgrade of v4: the v5 API server must never
+start against a v4 database schema. When you update an instance that was running v4,
+the module performs the migration automatically during `update-module`, using the
+official `v4-migrator` tool:
+
+- the running services are stopped,
+- the existing v4 data is backed up (kept at `state/backup-v4/`),
+- the data is migrated offline into a fresh v5 database,
+- the services are restarted on the migrated database.
+
+The migration runs only when a v4 schema is detected; fresh installs and
+already-migrated instances are left untouched. For the manual procedure,
+prerequisites and troubleshooting, see the official guide:
+https://dependencytrack.github.io/docs/next/guides/administration/migrating-from-v4/
+
 ## Debug
 
 some CLI are needed to debug

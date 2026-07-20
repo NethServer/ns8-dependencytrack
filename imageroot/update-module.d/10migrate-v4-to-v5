@@ -1,0 +1,181 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2025 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# Migrate the Dependency-Track database from the v4 schema to v5.
+#
+# Dependency-Track v5 is NOT an in-place upgrade of v4: the v5 apiserver must
+# never boot against a v4 schema. Migration is done offline with the official
+# `v4-migrator` tool, moving data from the existing (v4) database into a fresh
+# v5 database. See:
+#   https://dependencytrack.github.io/docs/next/guides/administration/migrating-from-v4/
+#
+# This hook runs before 20restart. It is idempotent: it only acts when the
+# `postgres-data` volume still holds a v4 schema, and skips fresh installs and
+# already-migrated (v5) databases. The real `postgres-data` volume is never
+# destroyed until a validated v5 dump has been produced, and a v4 backup dump
+# is always kept.
+#
+# On success and on skip the services are (re)started here, because 20restart
+# only does `try-restart`, which will not start a service this script stopped.
+# On failure the services are deliberately left stopped: the v4 data is still
+# intact and must NOT be served by a v5 apiserver.
+#
+
+set -e -o pipefail
+exec 1>&2 # Redirect any output to the journal (stderr)
+
+SRC_CTR="dt_migrate_src"
+DST_CTR="dt_migrate_dst"
+LOAD_CTR="dt_migrate_load"
+NET="dt_migrate_net"
+DST_VOL="postgres-migrate-v5"
+DB="dependencytrack"
+BACKUP_DIR="backup-v4"
+RESTORE_DIR="restore"
+
+# The v4-migrator image is pinned by build-images.sh. If it is not present in
+# the environment (older module build), there is nothing we can do here.
+if [[ -z "${V4_MIGRATOR_IMAGE:-}" ]]; then
+    echo "V4_MIGRATOR_IMAGE is not set; skipping v4->v5 migration."
+    exit 0
+fi
+
+# Read the database password from secrets.env (not exported in the environment).
+POSTGRES_TOKEN=$(grep -E '^POSTGRES_TOKEN=' secrets.env | cut -d= -f2-)
+if [[ -z "${POSTGRES_TOKEN}" ]]; then
+    echo "Cannot migrate: POSTGRES_TOKEN is not set in secrets.env"
+    exit 1
+fi
+
+JDBC_SRC="jdbc:postgresql://${SRC_CTR}:5432/${DB}"
+JDBC_DST="jdbc:postgresql://${DST_CTR}:5432/${DB}"
+
+# Remove any leftover temporary resources from a previous, interrupted run.
+cleanup_temp() {
+    podman rm --ignore -f "${SRC_CTR}" "${DST_CTR}" "${LOAD_CTR}" >/dev/null 2>&1 || true
+    podman network rm --ignore "${NET}" >/dev/null 2>&1 || true
+}
+trap cleanup_temp EXIT
+
+wait_ready() {
+    local ctr="$1" tries=0
+    until podman exec "${ctr}" pg_isready -U postgres -d "${DB}" >/dev/null 2>&1; do
+        tries=$((tries + 1))
+        if [[ ${tries} -ge 60 ]]; then
+            echo "Timed out waiting for ${ctr} to become ready"
+            return 1
+        fi
+        sleep 2
+    done
+}
+
+# --- Stop all services so the source database has no writer -----------------
+systemctl --user stop dependencytrack.service
+
+cleanup_temp
+podman volume rm --ignore "${DST_VOL}" >/dev/null 2>&1 || true
+podman network create "${NET}" >/dev/null
+
+# --- Bring up the source (existing v4 data) ---------------------------------
+podman run -d --replace --name "${SRC_CTR}" --network "${NET}" \
+    --volume "postgres-data:/var/lib/postgresql/data:Z" \
+    --env POSTGRES_USER=postgres \
+    --env POSTGRES_PASSWORD="${POSTGRES_TOKEN}" \
+    --env POSTGRES_DB="${DB}" \
+    --env TZ=UTC \
+    "${POSTGRES_IMAGE}" >/dev/null
+wait_ready "${SRC_CTR}"
+
+# --- Idempotency gate: only migrate a real v4 schema ------------------------
+has_flyway=$(podman exec "${SRC_CTR}" psql -U postgres -d "${DB}" -tAc \
+    "SELECT to_regclass('public.flyway_schema_history') IS NOT NULL")
+user_tables=$(podman exec "${SRC_CTR}" psql -U postgres -d "${DB}" -tAc \
+    "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+
+if [[ "${has_flyway}" == "t" ]]; then
+    echo "Database already migrated to v5 (flyway schema present); skipping."
+    cleanup_temp
+    systemctl --user start dependencytrack.service
+    exit 0
+fi
+if [[ -z "${user_tables}" || "${user_tables}" -eq 0 ]]; then
+    echo "Empty database (fresh install); nothing to migrate."
+    cleanup_temp
+    systemctl --user start dependencytrack.service
+    exit 0
+fi
+
+echo "v4 schema detected; starting migration to v5."
+
+# --- Safety backup of the v4 database ---------------------------------------
+mkdir -p "${BACKUP_DIR}"
+podman exec "${SRC_CTR}" pg_dump -U postgres -Fc "${DB}" \
+    > "${BACKUP_DIR}/${DB}-v4.pg_dump"
+echo "v4 backup written to state/${BACKUP_DIR}/${DB}-v4.pg_dump"
+
+# --- Bring up a fresh v5 target ---------------------------------------------
+podman run -d --replace --name "${DST_CTR}" --network "${NET}" \
+    --volume "${DST_VOL}:/var/lib/postgresql/data:Z" \
+    --env POSTGRES_USER=postgres \
+    --env POSTGRES_PASSWORD="${POSTGRES_TOKEN}" \
+    --env POSTGRES_DB="${DB}" \
+    --env TZ=UTC \
+    "${POSTGRES_IMAGE}" >/dev/null
+wait_ready "${DST_CTR}"
+
+# --- Run the official migrator: bootstrap -> verify -> run ------------------
+run_migrator() {
+    podman run --rm --network "${NET}" --env TZ=UTC "${V4_MIGRATOR_IMAGE}" "$@"
+}
+
+run_migrator bootstrap \
+    --target-url "${JDBC_DST}" --target-user postgres --target-pass "${POSTGRES_TOKEN}"
+run_migrator verify \
+    --target-url "${JDBC_DST}" --target-user postgres --target-pass "${POSTGRES_TOKEN}"
+run_migrator run \
+    --source-url "${JDBC_SRC}" --source-user postgres --source-pass "${POSTGRES_TOKEN}" \
+    --target-url "${JDBC_DST}" --target-user postgres --target-pass "${POSTGRES_TOKEN}"
+
+# --- Dump the migrated v5 database ------------------------------------------
+mkdir -p "${RESTORE_DIR}"
+podman exec "${DST_CTR}" pg_dump -U postgres -Fc "${DB}" \
+    > "${RESTORE_DIR}/${DB}.pg_dump"
+
+# Temporary source/target no longer needed; the migrated data is in the dump.
+podman rm --ignore -f "${SRC_CTR}" "${DST_CTR}" >/dev/null 2>&1 || true
+
+# --- Replace postgres-data with the migrated v5 data ------------------------
+# Only from here on do we touch the real volume. The v4 backup and the v5 dump
+# are both on disk, so a failure past this point is still recoverable by hand.
+cat - >"${RESTORE_DIR}/${DB}_restore.sh" <<'EOS'
+# Read dump file from standard input:
+pg_restore --no-owner --no-privileges -U postgres -d dependencytrack
+ec=$?
+docker_temp_server_stop
+exit $ec
+EOS
+
+podman volume rm --force postgres-data >/dev/null
+podman volume create postgres-data >/dev/null
+
+podman run --rm --interactive --network=none \
+    --volume "./${RESTORE_DIR}:/docker-entrypoint-initdb.d/:Z" \
+    --volume "postgres-data:/var/lib/postgresql/data:Z" \
+    --replace --name "${LOAD_CTR}" \
+    --env POSTGRES_USER=postgres \
+    --env POSTGRES_PASSWORD="${POSTGRES_TOKEN}" \
+    --env POSTGRES_DB="${DB}" \
+    --env TZ=UTC \
+    "${POSTGRES_IMAGE}" < "${RESTORE_DIR}/${DB}.pg_dump"
+
+# --- Success: clean up transient artifacts (keep the v4 backup) -------------
+podman volume rm --ignore "${DST_VOL}" >/dev/null 2>&1 || true
+rm -rf "${RESTORE_DIR}"
+
+echo "Migration to v5 complete. v4 backup kept at state/${BACKUP_DIR}/${DB}-v4.pg_dump"
+systemctl --user start dependencytrack.service

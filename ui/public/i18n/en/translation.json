@@ -48,7 +48,10 @@
     "trivy_token": "Trivy token",
     "trivy_url": "Trivy URL",
     "trivy_url_tooltip": "The URL of the Trivy server to use for vulnerability scanning. it must be set inside the Dependency-Track user interface.",
-    "trivy_token_tooltip": "The Trivy token to use for vulnerability scanning. it must be set inside the Dependency-Track user interface."
+    "trivy_token_tooltip": "The Trivy token to use for vulnerability scanning. it must be set inside the Dependency-Track user interface.",
+    "migration_notice_title": "Dependency-Track has been migrated to version 5",
+    "migration_notice_description": "Version 5 cannot decrypt the secrets stored by version 4, so they were cleared. Set the Trivy URL and token again in the Dependency-Track interface, you find them under Advanced below. Repository passwords, analyzer tokens and integration keys also have to be entered again, and notification rules are disabled until you re-enable them.",
+    "migration_notice_action": "Got it"
   },
   "about": {
     "title": "About"
@@ -64,7 +67,8 @@
     "get-name": "Get name",
     "list-backup-repositories": "List backup repositories",
     "list-backups": "List backups",
-    "list-installed-modules": "List installed modules"
+    "list-installed-modules": "List installed modules",
+    "dismiss-migration-notice": "Dismiss migration notice"
   },
   "error": {
     "error": "Error",

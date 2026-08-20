@@ -5,12 +5,14 @@
   ],
   "packageRules": [
     {
+      "description": "The v4-migrator must always match the apiserver version",
       "matchDatasources": ["docker"],
       "matchPackageNames": [
         "dependencytrack/apiserver",
-        "dependencytrack/frontend"
+        "dependencytrack/frontend",
+        "ghcr.io/dependencytrack/v4-migrator"
       ],
-      "allowedVersions": "<5"
+      "groupName": "dependency-track"
     },
     {
       "matchDatasources": ["docker"],

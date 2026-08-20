@@ -105,6 +105,12 @@ mark_migrated() {
     python3 -c 'import agent; agent.set_env("DT_SCHEMA_MAJOR", "5")'
 }
 
+# Surfaced by get-configuration, so the Settings page can tell the admin which
+# settings v5 could not carry over. Cleared by dismiss-migration-notice.
+raise_migration_notice() {
+    python3 -c 'import agent; agent.set_env("DT_MIGRATION_NOTICE", "1")'
+}
+
 skip_and_start() {
     mark_migrated
     finish
@@ -200,6 +206,7 @@ if [[ -f "${SWAP_FLAG}" ]]; then
     echo "Resuming an interrupted migration from state/${V5_DUMP}."
     swap_in_migrated_database
     mark_migrated
+    raise_migration_notice
     finish
     echo "Migration to Dependency-Track v5 complete."
     exit 0
@@ -259,8 +266,10 @@ podman rm --ignore -f "${SRC_CTR}" "${DST_CTR}" >/dev/null
 
 swap_in_migrated_database
 mark_migrated
+raise_migration_notice
 finish
 
 echo "Migration to Dependency-Track v5 complete."
-echo "${SD_WARN}Credentials encrypted by v4 are not carried over: re-enter repository and"
-echo "${SD_WARN}analyzer credentials, and re-enable the notification rules."
+echo "${SD_WARN}v5 cannot decrypt what v4 encrypted, so secrets were wiped. Configure the"
+echo "${SD_WARN}Trivy analyzer again with the URL and token from the module settings, re-enter"
+echo "${SD_WARN}repository and analyzer credentials, and re-enable the notification rules."

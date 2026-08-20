@@ -1,0 +1,12 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2026 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# Runs before 20restart, which only does try-restart and would not start a
+# service the migration stopped.
+
+set -e
+exec "${AGENT_INSTALL_DIR}/bin/module-migrate-v5"

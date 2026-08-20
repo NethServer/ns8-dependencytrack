@@ -54,6 +54,38 @@ To Update the instance:
 
     api-cli run update-module --data '{"module_url":"ghcr.io/nethserver/dependencytrack:latest","instances":["dependencytrack1"],"force":true}'
 
+### Upgrading from Dependency-Track v4 to v5
+
+Dependency-Track v5 is not an in-place upgrade of v4: the v5 API server must never start
+against a v4 database schema. When an instance still running v4 is updated, the module
+migrates the database automatically during `update-module`, with the official
+[v4-migrator](https://dependencytrack.github.io/docs/next/guides/administration/migrating-from-v4/)
+tool:
+
+- the pod is stopped, so nothing writes to the database,
+- the v4 data is dumped to `state/backup-v4/dependencytrack-v4.pg_dump` and kept there,
+- the data is copied offline into a fresh v5 database, then verified,
+- the `postgres-data` volume is replaced with the migrated database and the pod is started.
+
+The same migration runs during `restore-module`, because a backup taken before the upgrade
+restores a v4 database into the v5 module. There the schema is always inspected, since the
+recorded schema version describes the instance before the restore, not the data that was just
+loaded.
+
+The migration runs only when a v4 schema is found. Fresh installs and already migrated
+instances are left untouched, and the module records `DT_SCHEMA_MAJOR=5` in its state so the
+check is not repeated on later updates.
+
+If the migration fails the services are left stopped on purpose and the error is reported in
+the journal. Until the migrated database is swapped in, the original data is untouched; from
+that point on it is the `state/backup-v4/dependencytrack-v4.pg_dump` copy and the migrated dump
+that carry it, and the next run resumes the swap. Either way, fix the cause and run
+`update-module` again, or restore the module again if the failure happened during a restore.
+
+Two limits come from the upstream tool: credentials encrypted by v4 are not carried over, so
+repository and analyzer credentials have to be entered again, and notification rules arrive
+disabled.
+
 ## Debug
 
 some CLI are needed to debug

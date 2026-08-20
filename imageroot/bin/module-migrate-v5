@@ -1,0 +1,266 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2025 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# v5 is not an in-place upgrade of v4: the schemas are incompatible and a v5
+# apiserver must never boot against a v4 database. The official v4-migrator
+# copies the data offline into a fresh v5 database:
+#   https://dependencytrack.github.io/docs/next/guides/administration/migrating-from-v4/
+#
+# On failure the pod is left stopped rather than started on a v4 or
+# half-migrated database. Both dumps stay on disk and the run is resumable.
+#
+
+set -E -e -o pipefail
+exec 1>&2 # Redirect any output to the journal (stderr)
+
+# Callers run from different directories.
+cd "${AGENT_STATE_DIR}"
+
+SD_ERR='<3>'
+SD_WARN='<4>'
+
+SRC_CTR="dt_migrate_src"
+DST_CTR="dt_migrate_dst"
+LOAD_CTR="dt_migrate_load"
+NET="dt_migrate_net"
+DST_VOL="postgres-migrate-v5"
+DB="dependencytrack"
+BACKUP_DIR="backup-v4"
+# Not state/restore/: postgresql-app.service mounts it as
+# /docker-entrypoint-initdb.d/, where a leftover restore script would run.
+WORK_DIR="migrate-v5"
+V4_DUMP="${BACKUP_DIR}/${DB}-v4.pg_dump"
+V5_DUMP="${WORK_DIR}/${DB}.pg_dump"
+# Present means a previous run died while replacing postgres-data, so the next
+# run must resume instead of inspecting a volume that is empty at that point.
+SWAP_FLAG="${WORK_DIR}/.swap-in-progress"
+# Mandatory flag of `run`.
+METRICS_RETENTION_DAYS=90
+
+if [[ "${1:-}" == "--inspect" ]]; then
+    inspect_only=1
+    retry_hint="restore the module again"
+else
+    inspect_only=""
+    retry_hint="run update-module again"
+fi
+
+# The marker describes the instance from before a restore, not what the backup
+# just put in the database.
+if [[ -z "${inspect_only}" && ! -f "${SWAP_FLAG}" && "${DT_SCHEMA_MAJOR:-}" == "5" ]]; then
+    exit 0
+fi
+
+# `podman volume rm` and `podman network rm` have no --ignore flag, so probe first.
+cleanup_temp() {
+    podman rm --ignore -f "${SRC_CTR}" "${DST_CTR}" "${LOAD_CTR}" >/dev/null 2>&1 || true
+    if podman network exists "${NET}"; then
+        podman network rm "${NET}" >/dev/null || true
+    fi
+    if podman volume exists "${DST_VOL}"; then
+        podman volume rm --force "${DST_VOL}" >/dev/null || true
+    fi
+}
+
+# An ERR trap would miss the `exit 1` of the checks below.
+completed=""
+on_exit() {
+    local rc=$?
+    cleanup_temp
+    if [[ -n "${completed}" ]]; then
+        return
+    fi
+    echo "${SD_ERR}Migration to Dependency-Track v5 failed (exit ${rc}). Services are left"
+    echo "${SD_ERR}stopped on purpose: a v5 apiserver must not run against a v4 database."
+    if [[ -f "${SWAP_FLAG}" && -f "${V5_DUMP}" ]]; then
+        echo "${SD_ERR}The database was being replaced. The migrated dump is kept at"
+        echo "${SD_ERR}state/${V5_DUMP} and the next run resumes from it."
+    fi
+    if [[ -f "${V4_DUMP}" ]]; then
+        echo "${SD_ERR}The v4 data is dumped at state/${V4_DUMP}"
+    fi
+    echo "${SD_ERR}Fix the reported error, then ${retry_hint} to retry."
+}
+trap on_exit EXIT
+
+fail() {
+    echo "${SD_ERR}$*"
+    exit 1
+}
+
+# Marking the run complete last keeps a failed start from passing for a success.
+finish() {
+    if [[ "${was_running}" == "yes" ]]; then
+        systemctl --user start dependencytrack.service
+    fi
+    completed=1
+}
+
+mark_migrated() {
+    python3 -c 'import agent; agent.set_env("DT_SCHEMA_MAJOR", "5")'
+}
+
+skip_and_start() {
+    mark_migrated
+    finish
+    exit 0
+}
+
+wait_ready() {
+    local ctr="$1" tries=0
+    until podman exec "${ctr}" pg_isready -U postgres -d "${DB}" >/dev/null 2>&1; do
+        tries=$((tries + 1))
+        if [[ ${tries} -ge 60 ]]; then
+            fail "Timed out waiting for ${ctr} to accept connections"
+        fi
+        sleep 2
+    done
+}
+
+run_postgres() {
+    local name="$1" volume="$2"
+    shift 2
+    podman run -d --replace --name "${name}" --network "${NET}" \
+        --volume "${volume}:/var/lib/postgresql/data:Z" \
+        --env POSTGRES_USER=postgres \
+        --env POSTGRES_PASSWORD="${POSTGRES_TOKEN}" \
+        --env POSTGRES_DB="${DB}" \
+        --env TZ=UTC \
+        "${POSTGRES_IMAGE}" "$@" >/dev/null
+    wait_ready "${name}"
+}
+
+src_query() {
+    podman exec "${SRC_CTR}" psql -U postgres -d "${DB}" -tAc "$1"
+}
+
+run_migrator() {
+    podman run --rm --network "${NET}" --env TZ=UTC "${V4_MIGRATOR_IMAGE}" "$@" \
+        --target-url "${JDBC_DST}" --target-user postgres --target-pass "${POSTGRES_TOKEN}"
+}
+
+# Same reload idiom as actions/restore-module/40restore_database.
+swap_in_migrated_database() {
+    cat - >"${WORK_DIR}/${DB}_restore.sh" <<'EOS'
+# Read dump file from standard input:
+pg_restore --no-owner --no-privileges -U postgres -d dependencytrack
+ec=$?
+docker_temp_server_stop
+exit $ec
+EOS
+
+    touch "${SWAP_FLAG}"
+    if podman volume exists postgres-data; then
+        podman volume rm --force postgres-data >/dev/null
+    fi
+    podman volume create postgres-data >/dev/null
+
+    podman run --rm --interactive --network=none \
+        --volume "./${WORK_DIR}:/docker-entrypoint-initdb.d/:Z" \
+        --volume "postgres-data:/var/lib/postgresql/data:Z" \
+        --replace --name "${LOAD_CTR}" \
+        --env POSTGRES_USER=postgres \
+        --env POSTGRES_PASSWORD="${POSTGRES_TOKEN}" \
+        --env POSTGRES_DB="${DB}" \
+        --env TZ=UTC \
+        "${POSTGRES_IMAGE}" <"${V5_DUMP}"
+
+    rm -f "${SWAP_FLAG}" "${V5_DUMP}" "${WORK_DIR}/${DB}_restore.sh"
+}
+
+# Without `|| true`, `set -e` aborts on a missing token before its own guard.
+POSTGRES_TOKEN=$(grep -E '^POSTGRES_TOKEN=' secrets.env | cut -d= -f2- || true)
+if [[ -z "${POSTGRES_TOKEN}" ]]; then
+    fail "POSTGRES_TOKEN is not set in secrets.env"
+fi
+
+JDBC_SRC="jdbc:postgresql://${SRC_CTR}:5432/${DB}"
+JDBC_DST="jdbc:postgresql://${DST_CTR}:5432/${DB}"
+
+was_running=no
+if systemctl --user --quiet is-active dependencytrack.service; then
+    was_running=yes
+    systemctl --user stop dependencytrack.service
+fi
+
+mkdir -p "${WORK_DIR}"
+
+# postgres-data is empty or half loaded here: inspecting it would conclude
+# "fresh install" and mark a data-less instance as migrated.
+if [[ -f "${SWAP_FLAG}" ]]; then
+    if [[ ! -f "${V5_DUMP}" ]]; then
+        fail "A previous migration was interrupted while replacing the database, but" \
+             "state/${V5_DUMP} is gone. Restore state/${V4_DUMP} into a v4 instance by hand."
+    fi
+    echo "Resuming an interrupted migration from state/${V5_DUMP}."
+    swap_in_migrated_database
+    mark_migrated
+    finish
+    echo "Migration to Dependency-Track v5 complete."
+    exit 0
+fi
+
+cleanup_temp
+podman network create "${NET}" >/dev/null
+run_postgres "${SRC_CTR}" postgres-data
+
+# v5 tracks its schema with Flyway, v4 with DataNucleus and Liquibase.
+if [[ "$(src_query "SELECT to_regclass('public.flyway_schema_history') IS NOT NULL")" == "t" ]]; then
+    echo "Database is already on the v5 schema, nothing to migrate."
+    skip_and_start
+fi
+
+table_count=$(src_query "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+# An empty string compares equal to 0 with -eq, and would read as a fresh install.
+if [[ ! "${table_count}" =~ ^[0-9]+$ ]]; then
+    fail "Could not count the tables of the ${DB} database, got '${table_count}'."
+fi
+
+if [[ "${table_count}" -eq 0 ]]; then
+    echo "Database is empty, nothing to migrate."
+    skip_and_start
+fi
+
+if [[ "$(src_query "SELECT to_regclass('public.\"SCHEMAVERSION\"') IS NOT NULL OR to_regclass('public.\"EVENTSERVICELOG\"') IS NOT NULL")" != "t" ]]; then
+    fail "The database holds tables but neither a v4 nor a v5 schema marker." \
+         "Refusing to guess: migrate it by hand first."
+fi
+
+if [[ -z "${V4_MIGRATOR_IMAGE:-}" ]]; then
+    fail "A v4 schema was detected but V4_MIGRATOR_IMAGE is not set."
+fi
+
+echo "Dependency-Track v4 schema detected, starting the migration to v5."
+
+mkdir -p "${BACKUP_DIR}"
+podman exec "${SRC_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V4_DUMP}"
+echo "v4 backup written to state/${V4_DUMP}"
+
+# Both are raised on the migrator preflight's request: the load writes in bulk
+# and attaching the metrics partitions takes many locks in one transaction.
+run_postgres "${DST_CTR}" "${DST_VOL}" \
+    -c max_wal_size=4GB -c max_locks_per_transaction=256
+
+run_migrator bootstrap
+run_migrator verify
+run_migrator run \
+    --source-url "${JDBC_SRC}" --source-user postgres --source-pass "${POSTGRES_TOKEN}" \
+    --metrics-retention-days "${METRICS_RETENTION_DAYS}"
+run_migrator verify
+run_migrator cleanup
+
+podman exec "${DST_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V5_DUMP}"
+podman rm --ignore -f "${SRC_CTR}" "${DST_CTR}" >/dev/null
+
+swap_in_migrated_database
+mark_migrated
+finish
+
+echo "Migration to Dependency-Track v5 complete."
+echo "${SD_WARN}Credentials encrypted by v4 are not carried over: re-enter repository and"
+echo "${SD_WARN}analyzer credentials, and re-enable the notification rules."

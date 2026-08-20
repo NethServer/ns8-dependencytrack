@@ -19,6 +19,19 @@
         />
       </cv-column>
     </cv-row>
+    <cv-row v-if="migrationNotice">
+      <cv-column>
+        <NsInlineNotification
+          kind="warning"
+          :title="$t('settings.migration_notice_title')"
+          :description="$t('settings.migration_notice_description')"
+          :actionLabel="$t('settings.migration_notice_action')"
+          :loadingAction="loading.dismissMigrationNotice"
+          @action="dismissMigrationNotice"
+          :showCloseButton="false"
+        />
+      </cv-column>
+    </cv-row>
     <cv-row>
       <cv-column>
         <cv-tile light>
@@ -161,13 +174,16 @@ export default {
       trivy_url: "",
       trivy_token: "",
       isShownSetupKey: false,
+      migrationNotice: false,
       loading: {
         getConfiguration: false,
         configureModule: false,
+        dismissMigrationNotice: false,
       },
       error: {
         getConfiguration: "",
         configureModule: "",
+        dismissMigrationNotice: "",
         host: "",
         lets_encrypt: "",
       },
@@ -242,8 +258,54 @@ export default {
       this.isLetsEncryptEnabled = config.lets_encrypt;
       this.trivy_url = config.trivy_url;
       this.trivy_token = config.trivy_token;
+      this.migrationNotice = config.migration_notice;
       this.loading.getConfiguration = false;
       this.focusElement("host");
+    },
+    async dismissMigrationNotice() {
+      this.loading.dismissMigrationNotice = true;
+      this.error.dismissMigrationNotice = "";
+      const taskAction = "dismiss-migration-notice";
+      const eventId = this.getUuid();
+
+      // register to task error
+      this.core.$root.$once(
+        `${taskAction}-aborted-${eventId}`,
+        this.dismissMigrationNoticeAborted
+      );
+
+      // register to task completion
+      this.core.$root.$once(
+        `${taskAction}-completed-${eventId}`,
+        this.dismissMigrationNoticeCompleted
+      );
+
+      const res = await to(
+        this.createModuleTaskForApp(this.instanceName, {
+          action: taskAction,
+          extra: {
+            title: this.$t("action." + taskAction),
+            isNotificationHidden: true,
+            eventId,
+          },
+        })
+      );
+      const err = res[0];
+
+      if (err) {
+        console.error(`error creating task ${taskAction}`, err);
+        this.error.dismissMigrationNotice = this.getErrorMessage(err);
+        this.loading.dismissMigrationNotice = false;
+      }
+    },
+    dismissMigrationNoticeAborted(taskResult, taskContext) {
+      console.error(`${taskContext.action} aborted`, taskResult);
+      this.error.dismissMigrationNotice = this.$t("error.generic_error");
+      this.loading.dismissMigrationNotice = false;
+    },
+    dismissMigrationNoticeCompleted() {
+      this.migrationNotice = false;
+      this.loading.dismissMigrationNotice = false;
     },
     validateConfigureModule() {
       this.clearErrors(this);

@@ -82,9 +82,20 @@ that point on it is the `state/backup-v4/dependencytrack-v4.pg_dump` copy and th
 that carry it, and the next run resumes the swap. Either way, fix the cause and run
 `update-module` again, or restore the module again if the failure happened during a restore.
 
-Two limits come from the upstream tool: credentials encrypted by v4 are not carried over, so
-repository and analyzer credentials have to be entered again, and notification rules arrive
-disabled.
+After the migration, some settings have to be entered again. v5 stores secrets in a new
+database-backed keystore and cannot decrypt what v4 encrypted, so the migrator wipes them
+rather than carry unreadable values:
+
+- **the Trivy analyzer must be configured again**. v5 turned it into a plugin whose runtime
+  configuration the migrator does not map, and it starts disabled. Take the URL and the token
+  from the module Settings page, or from `api-cli run module/<id>/get-configuration`, and
+  enter them in Dependency-Track as you did at install time. Until then Trivy reports nothing.
+- authenticated repositories lose their password and are disabled,
+- analyzer tokens, SMTP and LDAP passwords and integration keys are cleared,
+- notification rules arrive disabled, their publisher configuration having been rebuilt.
+
+Everything else is migrated: projects, components, vulnerabilities, findings, policies, users,
+teams and permissions.
 
 ## Debug
 

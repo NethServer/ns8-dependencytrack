@@ -13,7 +13,7 @@ Output example:
 
 ## Configure
 
-Let's assume that the mattermost instance is named `dependencytrack1`.
+Let's assume that the Dependency-Track instance is named `dependencytrack1`.
 
 Launch `configure-module`, by setting the following parameters:
 - `host`: a fully qualified domain name for the application
@@ -33,7 +33,7 @@ EOF
 
 The above command will:
 - start and configure the dependencytrack instance
-- configure a virtual host for trafik to access the instance
+- configure a virtual host for traefik to access the instance
 
 ## Get the configuration
 You can retrieve the configuration with
@@ -120,25 +120,21 @@ on the root terminal
 - if you want to debug a container or see environment inside
  `runagent -m dependencytrack1`
  ```
-podman ps
-CONTAINER ID  IMAGE                                      COMMAND               CREATED        STATUS        PORTS                    NAMES
-d292c6ff28e9  localhost/podman-pause:4.6.1-1702418000                          9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  80b8de25945f-infra
-d8df02bf6f4a  docker.io/library/postgres:15.5-alpine3.19          --character-set-s...  9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  postgresql-app
-9e58e5bd676f  docker.io/library/nginx:stable-alpine3.17  nginx -g daemon o...  9 minutes ago  Up 9 minutes  127.0.0.1:20015->80/tcp  dependencytrack-apiserver
+podman ps --format "{{.Names}}\t{{.Image}}"
+80b8de25945f-infra
+postgresql-app              docker.io/library/postgres:17.10-alpine
+dependencytrack-apiserver   docker.io/dependencytrack/apiserver:5.0.4
+trivy-app                   docker.io/aquasec/trivy:0.74.0
+dependencytrack-nginx       docker.io/library/nginx:1.30.4-alpine
+dependencytrack-frontend    docker.io/dependencytrack/frontend:5.0.4
 ```
 
 you can see what environment variable is inside the container
 ```
-podman exec  dependencytrack-apiserver env
-TERM=xterm
-container=podman
-NGINX_VERSION=1.24.0
-PKG_RELEASE=1
-NJS_VERSION=0.7.12
-NGINX_IMAGE=docker.io/nginx:stable-alpine3.17
-CONFIG_DATABASE_URI="postgresql://postgres:Nethesis,1234@127.0.0.1:5432/toto"
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-HOME=/root
+podman exec dependencytrack-apiserver env | grep ^DT_
+DT_DATASOURCE_URL=jdbc:postgresql://postgresql-app:5432/dependencytrack
+DT_DATASOURCE_USERNAME=postgres
+DT_DATASOURCE_PASSWORD=...
 ```
 
 you can run a shell inside the container

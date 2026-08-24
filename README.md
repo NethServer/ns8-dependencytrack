@@ -73,21 +73,21 @@ notification rules arrive disabled. Everything else migrates: projects, componen
 vulnerabilities, findings, policies, users, teams and permissions.
 
 v5 also turned every analyzer and vulnerability source into a plugin whose configuration the
-migrator does not carry, so the module copies the v4 settings over for the ones that need no
-secret: the internal analyzer, NVD, and OSV with its list of ecosystems. Trivy is done too,
-since the module owns that token — an analyzer that was off stays off, ready to be switched on,
-and one pointed at another Trivy server is left untouched.
+migrator leaves empty, so the module reads the v4 settings before they are wiped and applies
+them again. An analyzer that was on comes back on, one that was off stays off — except for the
+four that authenticate, because v5 validates their configuration and refuses to enable them
+without the API token v4 had encrypted.
 
-An analyzer that was on in v4 comes back on, one that was off stays off. The exception is the
-four that authenticate: OSS Index, GitHub Advisories, Snyk and VulnDB. v5 validates their
-configuration and refuses to enable them without the API token v4 had encrypted, and that token
-is gone. OSS Index is the one that bites, since v4 queried it anonymously and had it enabled by
-default.
+| Analyzer or source | Carried over |
+| --- | --- |
+| Internal, NVD, OSV, Trivy | fully, including their switches and Trivy's token |
+| OSS Index, GitHub Advisories, Snyk | every setting except the token, so they stay off until you enter it |
+| VulnDB | nothing: v4 authenticated with OAuth1, v5 expects OAuth2 |
 
-For those, everything that is not a secret is stored anyway — URLs, the OSS Index username, the
-Snyk organisation — so entering the token is the only step left. VulnDB gets nothing: v4
-authenticated with OAuth1 and v5 expects OAuth2. The Settings page lists by name the ones that
-were running before the upgrade and are waiting for their token.
+OSS Index is the one that bites: v4 queried it anonymously and had it enabled by default, while
+v5 demands a token. The Settings page lists by name whatever was running before the upgrade and
+is waiting for one. A Trivy pointed at some other server is left untouched, since that token
+cannot be recovered either.
 
 ## Debug
 

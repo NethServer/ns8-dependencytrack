@@ -194,8 +194,13 @@ export default {
   computed: {
     ...mapState(["instanceName", "core", "appName"]),
     migrationNoticeDescription() {
+      // The banner names what the Dependency-Track interface names, not the
+      // extension identifiers the API reports.
       const analyzers = this.analyzersPending
-        ? this.analyzersPending.split(",").join(", ")
+        ? this.analyzersPending
+            .split(",")
+            .map((name) => this.$t("settings.analyzer_" + name.replace(/-/g, "_")))
+            .join(", ")
         : "";
       return [
         this.$t("settings.migration_notice_intro"),

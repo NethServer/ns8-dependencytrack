@@ -56,7 +56,11 @@
     "migration_notice_trivy_prepared": "Trivy stays off as it was in version 4, but its URL and token are stored, so enabling it is now a single switch.",
     "migration_notice_trivy_none": "The Trivy analyzer has to be set up by hand.",
     "migration_notice_todo": "Still to do by hand: re-enter repository passwords and integration keys, and re-enable the notification rules.",
-    "migration_notice_todo_analyzers": "Still to do by hand: enter the API token of {analyzers}, re-enter repository passwords and integration keys, and re-enable the notification rules."
+    "migration_notice_todo_analyzers": "Still to do by hand: enter the API token of {analyzers}, re-enter repository passwords and integration keys, and re-enable the notification rules.",
+    "analyzer_oss_index": "OSS Index",
+    "analyzer_github": "GitHub Advisories",
+    "analyzer_snyk": "Snyk",
+    "analyzer_vuln_db": "VulnDB"
   },
   "about": {
     "title": "About"

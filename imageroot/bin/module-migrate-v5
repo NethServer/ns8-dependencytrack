@@ -150,6 +150,46 @@ run_migrator() {
         --target-url "${JDBC_DST}" --target-user postgres --target-pass "${POSTGRES_TOKEN}"
 }
 
+# v5 has no way to preset an API key, and the two calls that configure the Trivy
+# analyzer need one. The migrated database is ours and offline right here, so
+# seed a team and a key directly. Key format and hashing come from Alpine's
+# ApiKeyGenerator: odt_<publicId 8>_<secret 32>, stored as a SHA3-256 hex digest.
+create_api_key() {
+    local pub sec hash
+    read -r pub sec hash < <(python3 - <<'EOS'
+import hashlib, secrets
+alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456879"
+pub = "".join(secrets.choice(alphabet) for _ in range(8))
+sec = "".join(secrets.choice(alphabet) for _ in range(32))
+print(pub, sec, hashlib.sha3_256(sec.encode()).hexdigest())
+EOS
+    )
+
+    podman exec -i "${DST_CTR}" psql -U postgres -d "${DB}" -v ON_ERROR_STOP=1 -q <<EOS
+DO \$\$
+DECLARE team_id bigint; key_id bigint;
+BEGIN
+    INSERT INTO "TEAM" ("NAME", "UUID")
+        VALUES ('NethServer module', gen_random_uuid()::text) RETURNING "ID" INTO team_id;
+    INSERT INTO "TEAMS_PERMISSIONS" ("TEAM_ID", "PERMISSION_ID")
+        SELECT team_id, "ID" FROM "PERMISSION"
+         WHERE "NAME" IN ('SECRET_MANAGEMENT', 'SYSTEM_CONFIGURATION');
+    INSERT INTO "APIKEY" ("COMMENT", "CREATED", "SECRET_HASH", "PUBLIC_ID", "IS_LEGACY")
+        VALUES ('Used by the NethServer module', now(), '${hash}', '${pub}', false)
+        RETURNING "ID" INTO key_id;
+    INSERT INTO "APIKEYS_TEAMS" ("TEAM_ID", "APIKEY_ID") VALUES (team_id, key_id);
+END
+\$\$;
+EOS
+
+    DT_API_KEY="odt_${pub}_${sec}" python3 - <<'EOS'
+import os, agent
+env = agent.read_envfile("secrets.env")
+env["DT_API_KEY"] = os.environ["DT_API_KEY"]
+agent.write_envfile("secrets.env", env)
+EOS
+}
+
 # Same reload idiom as actions/restore-module/40restore_database.
 swap_in_migrated_database() {
     cat - >"${WORK_DIR}/${DB}_restore.sh" <<'EOS'
@@ -261,6 +301,12 @@ run_migrator run \
 run_migrator verify
 run_migrator cleanup
 
+# A missing key only costs the automatic Trivy setup below, never the migration.
+if ! create_api_key; then
+    echo "${SD_WARN}Could not create an API key for the module: Dependency-Track will have to"
+    echo "${SD_WARN}be configured by hand."
+fi
+
 podman exec "${DST_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V5_DUMP}"
 podman rm --ignore -f "${SRC_CTR}" "${DST_CTR}" >/dev/null
 
@@ -268,6 +314,12 @@ swap_in_migrated_database
 mark_migrated
 raise_migration_notice
 finish
+
+# Needs the apiserver up, so only on the path that started it. The restore path
+# leaves the pod to configure-module and the admin does this from the UI.
+if [[ "${was_running}" == "yes" ]]; then
+    "${AGENT_INSTALL_DIR}/bin/module-setup-trivy-analyzer" || true
+fi
 
 echo "Migration to Dependency-Track v5 complete."
 echo "${SD_WARN}v5 cannot decrypt what v4 encrypted, so secrets were wiped. Configure the"

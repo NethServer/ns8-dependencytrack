@@ -24,7 +24,7 @@
         <NsInlineNotification
           kind="warning"
           :title="$t('settings.migration_notice_title')"
-          :description="$t('settings.migration_notice_description')"
+          :description="migrationNoticeDescription"
           :actionLabel="$t('settings.migration_notice_action')"
           :loadingAction="loading.dismissMigrationNotice"
           @action="dismissMigrationNotice"
@@ -175,6 +175,7 @@ export default {
       trivy_token: "",
       isShownSetupKey: false,
       migrationNotice: false,
+      trivyConfigured: false,
       loading: {
         getConfiguration: false,
         configureModule: false,
@@ -191,6 +192,11 @@ export default {
   },
   computed: {
     ...mapState(["instanceName", "core", "appName"]),
+    migrationNoticeDescription() {
+      return this.trivyConfigured
+        ? this.$t("settings.migration_notice_description_trivy_ok")
+        : this.$t("settings.migration_notice_description");
+    },
   },
   created() {
     this.getConfiguration();
@@ -259,6 +265,7 @@ export default {
       this.trivy_url = config.trivy_url;
       this.trivy_token = config.trivy_token;
       this.migrationNotice = config.migration_notice;
+      this.trivyConfigured = config.trivy_configured;
       this.loading.getConfiguration = false;
       this.focusElement("host");
     },

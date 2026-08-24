@@ -1,0 +1,80 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2026 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# Point the v5 Trivy analyzer at the Trivy server this module runs.
+#
+# v5 keeps analyzer credentials in a secret manager and has the extension
+# reference the secret by name, so this takes two calls. It needs the API key
+# seeded by module-migrate-v5, which is why a fresh install still configures the
+# analyzer by hand.
+#
+# Never fatal: a module that scans nothing is a nuisance, a failed update is
+# worse.
+#
+
+set -e -o pipefail
+exec 1>&2
+
+cd "${AGENT_STATE_DIR}"
+
+SD_WARN='<4>'
+
+API="http://127.0.0.1:${TCP_PORT}/api"
+SECRET_NAME="trivy-api-token"
+TRIVY_URL="http://127.0.0.1:8282"
+
+read_secret() {
+    grep -E "^$1=" secrets.env | cut -d= -f2- || true
+}
+
+api_key=$(read_secret DT_API_KEY)
+trivy_token=$(read_secret TRIVY_TOKEN)
+if [[ -z "${api_key}" || -z "${trivy_token}" ]]; then
+    echo "${SD_WARN}No API key or Trivy token in secrets.env, skipping the Trivy setup."
+    exit 0
+fi
+
+# The apiserver runs its init tasks before serving, which takes a while.
+for _ in $(seq 1 60); do
+    if curl -sf -o /dev/null "${API}/version"; then
+        break
+    fi
+    sleep 5
+done
+
+call() {
+    local method="$1" path="$2" body="$3"
+    curl -sS -o /dev/null -w '%{http_code}' -X "${method}" "${API}/v2${path}" \
+        -H "X-Api-Key: ${api_key}" \
+        -H "Content-Type: application/json" \
+        -d "${body}" || true
+}
+
+secret_body=$(N="${SECRET_NAME}" V="${trivy_token}" python3 -c \
+    'import json,os;print(json.dumps({"name":os.environ["N"],"value":os.environ["V"]}))')
+
+# 409 means the secret survived from an earlier run, which is just as good.
+code=$(call POST /secrets "${secret_body}")
+if [[ "${code}" != "201" && "${code}" != "409" ]]; then
+    echo "${SD_WARN}Could not store the Trivy token as a Dependency-Track secret (HTTP ${code})."
+    echo "${SD_WARN}Configure the Trivy analyzer by hand, the values are in the module settings."
+    exit 0
+fi
+
+config_body=$(U="${TRIVY_URL}" N="${SECRET_NAME}" python3 -c \
+    'import json,os;print(json.dumps({"config":{"enabled":True,"apiUrl":os.environ["U"],"apiToken":os.environ["N"],"scanLibrary":True,"scanOs":False,"ignoreUnfixed":False}}))')
+
+code=$(call PUT /extension-points/vuln-analyzer/extensions/trivy/config "${config_body}")
+if [[ "${code}" != "200" && "${code}" != "204" ]]; then
+    echo "${SD_WARN}Could not enable the Trivy analyzer (HTTP ${code}). Configure it by hand,"
+    echo "${SD_WARN}the values are in the module settings."
+    exit 0
+fi
+
+python3 -c 'import agent; agent.set_env("DT_TRIVY_CONFIGURED", "1")'
+echo "Trivy analyzer configured against ${TRIVY_URL}."

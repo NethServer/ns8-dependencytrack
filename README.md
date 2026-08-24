@@ -86,10 +86,11 @@ After the migration, some settings have to be entered again. v5 stores secrets i
 database-backed keystore and cannot decrypt what v4 encrypted, so the migrator wipes them
 rather than carry unreadable values:
 
-- **the Trivy analyzer must be configured again**. v5 turned it into a plugin whose runtime
-  configuration the migrator does not map, and it starts disabled. Take the URL and the token
-  from the module Settings page, or from `api-cli run module/<id>/get-configuration`, and
-  enter them in Dependency-Track as you did at install time. Until then Trivy reports nothing.
+- **the Trivy analyzer is reconfigured by the module**. v5 turned it into a plugin whose
+  runtime configuration the migrator does not map, so it would come back disabled and silent.
+  Since the module owns the Trivy token, the migration seeds an API key for itself, stores the
+  token in the v5 secret manager and points the analyzer at it. The Settings page says whether
+  it worked; if it did not, take the URL and token from that same page and enter them by hand.
 - authenticated repositories lose their password and are disabled,
 - analyzer tokens, SMTP and LDAP passwords and integration keys are cleared,
 - notification rules arrive disabled, their publisher configuration having been rebuilt.

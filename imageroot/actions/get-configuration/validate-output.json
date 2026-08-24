@@ -40,6 +40,11 @@
             "type": "boolean",
             "title": "Migration notice",
             "description": "True when the database was migrated from Dependency-Track v4 and the settings v5 could not carry over have not been acknowledged yet."
+        },
+        "trivy_configured": {
+            "type": "boolean",
+            "title": "Trivy analyzer configured",
+            "description": "True when the module configured the Trivy analyzer in Dependency-Track by itself."
         }
     }
 }

@@ -305,13 +305,20 @@ DT_OSSINDEX_URL=$(read_v4_property scanner ossindex.base.url https://ossindex.so
 DT_OSSINDEX_USERNAME=$(read_v4_property scanner ossindex.api.username "")
 DT_OSSINDEX_ALIAS_SYNC=$(read_v4_property scanner ossindex.alias.sync.enabled true)
 DT_GITHUB_ENABLED=$(read_v4_property vuln-source github.advisories.enabled false)
+DT_GITHUB_URL=$(read_v4_property vuln-source github.advisories.api.url https://api.github.com/graphql)
+DT_GITHUB_ALIAS_SYNC=$(read_v4_property vuln-source github.advisories.alias.sync.enabled true)
 DT_SNYK_ENABLED=$(read_v4_property scanner snyk.enabled false)
+DT_SNYK_URL=$(read_v4_property scanner snyk.base.url https://api.snyk.io)
+DT_SNYK_ORG_ID=$(read_v4_property scanner snyk.org.id "")
+DT_SNYK_ALIAS_SYNC=$(read_v4_property scanner snyk.alias.sync.enabled false)
 DT_VULNDB_ENABLED=$(read_v4_property scanner vulndb.enabled false)
 export DT_TRIVY_ENABLED DT_TRIVY_IGNORE_UNFIXED DT_TRIVY_SCAN_LIBRARY DT_TRIVY_SCAN_OS \
     DT_INTERNAL_ENABLED DT_NVD_ENABLED DT_NVD_FEEDS_URL \
     DT_OSV_ECOSYSTEMS DT_OSV_URL DT_OSV_ALIAS_SYNC \
     DT_OSSINDEX_ENABLED DT_OSSINDEX_URL DT_OSSINDEX_USERNAME DT_OSSINDEX_ALIAS_SYNC \
-    DT_GITHUB_ENABLED DT_SNYK_ENABLED DT_VULNDB_ENABLED
+    DT_GITHUB_ENABLED DT_GITHUB_URL DT_GITHUB_ALIAS_SYNC \
+    DT_SNYK_ENABLED DT_SNYK_URL DT_SNYK_ORG_ID DT_SNYK_ALIAS_SYNC \
+    DT_VULNDB_ENABLED
 
 # Their token is encrypted and gone, so another server means hands off.
 v4_trivy_url=$(read_v4_property scanner trivy.base.url "")

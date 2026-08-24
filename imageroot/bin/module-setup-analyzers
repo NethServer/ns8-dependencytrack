@@ -125,8 +125,9 @@ if ecosystems:
 print(json.dumps({"config": config}))')
 put_extension_config vuln-data-source osv "${body}" || true
 
-# v5 refuses to run OSS Index anonymously, and v4 encrypted its token. Store
-# what survives so that adding a token is all that is left to do.
+# These need a token v4 encrypted and the migrator wiped, so v5 would reject
+# them enabled. Store everything else, leaving the token as the only thing to
+# type. VulnDB gets nothing: v4 authenticated with OAuth1, v5 wants OAuth2.
 body=$(U="${DT_OSSINDEX_URL:-https://ossindex.sonatype.org}" N="${DT_OSSINDEX_USERNAME:-}" \
     A="${DT_OSSINDEX_ALIAS_SYNC:-true}" python3 -c '
 import json, os
@@ -140,7 +141,30 @@ if os.environ["N"]:
 print(json.dumps({"config": config}))')
 put_extension_config vuln-analyzer oss-index "${body}" || true
 
+body=$(U="${DT_GITHUB_URL:-https://api.github.com/graphql}" A="${DT_GITHUB_ALIAS_SYNC:-true}" python3 -c '
+import json, os
+print(json.dumps({"config": {
+    "enabled": False,
+    "apiUrl": os.environ["U"],
+    "aliasSyncEnabled": os.environ["A"].strip().lower() == "true",
+}}))')
+put_extension_config vuln-data-source github "${body}" || true
+
+body=$(U="${DT_SNYK_URL:-https://api.snyk.io}" O="${DT_SNYK_ORG_ID:-}" \
+    A="${DT_SNYK_ALIAS_SYNC:-false}" python3 -c '
+import json, os
+config = {
+    "enabled": False,
+    "apiBaseUrl": os.environ["U"],
+    "aliasSyncEnabled": os.environ["A"].strip().lower() == "true",
+}
+if os.environ["O"]:
+    config["orgId"] = os.environ["O"]
+print(json.dumps({"config": config}))')
+put_extension_config vuln-analyzer snyk "${body}" || true
+
 # Named in the Settings page: v4 had them running, v5 wants a token we lost.
+# Everything but their token is already in place, above.
 pending=""
 add_pending() {
     [[ "${2}" == "true" ]] && pending="${pending:+${pending},}$1"
@@ -158,4 +182,4 @@ agent.set_env("DT_ANALYZERS_PENDING", os.environ["PENDING"])'
 
 echo "Analyzers carried over: trivy=${trivy_state}, internal=${DT_INTERNAL_ENABLED:-true}," \
      "nvd=${DT_NVD_ENABLED:-true}, osv=[${DT_OSV_ECOSYSTEMS:-}]." \
-     "Still needing a token: ${pending:-none}."
+     "Prepared but off until their token is entered: ${pending:-none}."

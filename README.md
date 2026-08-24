@@ -78,9 +78,16 @@ secret: the internal analyzer, NVD, and OSV with its list of ecosystems. Trivy i
 since the module owns that token — an analyzer that was off stays off, ready to be switched on,
 and one pointed at another Trivy server is left untouched.
 
-The others cannot follow. OSS Index in particular ran anonymously in v4 and was enabled by
-default; v5 refuses to run it without an API token. Its URL and username are stored so that
-adding a token is all that remains. The Settings page names whatever is in that state.
+An analyzer that was on in v4 comes back on, one that was off stays off. The exception is the
+four that authenticate: OSS Index, GitHub Advisories, Snyk and VulnDB. v5 validates their
+configuration and refuses to enable them without the API token v4 had encrypted, and that token
+is gone. OSS Index is the one that bites, since v4 queried it anonymously and had it enabled by
+default.
+
+For those, everything that is not a secret is stored anyway — URLs, the OSS Index username, the
+Snyk organisation — so entering the token is the only step left. VulnDB gets nothing: v4
+authenticated with OAuth1 and v5 expects OAuth2. The Settings page lists by name the ones that
+were running before the upgrade and are waiting for their token.
 
 ## Debug
 

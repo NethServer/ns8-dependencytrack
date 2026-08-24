@@ -89,8 +89,10 @@ rather than carry unreadable values:
 - **the Trivy analyzer is reconfigured by the module**. v5 turned it into a plugin whose
   runtime configuration the migrator does not map, so it would come back disabled and silent.
   Since the module owns the Trivy token, the migration seeds an API key for itself, stores the
-  token in the v5 secret manager and points the analyzer at it. The Settings page says whether
-  it worked; if it did not, take the URL and token from that same page and enter them by hand.
+  token in the v5 secret manager and points the analyzer at it. The switches are read from the
+  v4 database and carried over, because their defaults differ: v4 scanned OS packages by
+  default, v5 does not. The Settings page says whether it worked; if it did not, take the URL
+  and token from that same page and enter them by hand.
 - authenticated repositories lose their password and are disabled,
 - analyzer tokens, SMTP and LDAP passwords and integration keys are cleared,
 - notification rules arrive disabled, their publisher configuration having been rebuilt.

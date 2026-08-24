@@ -13,6 +13,10 @@
 # seeded by module-migrate-v5, which is why a fresh install still configures the
 # analyzer by hand.
 #
+# The DT_TRIVY_* variables carry the settings read from the v4 database. Their
+# defaults here are v4's, not v5's: v5 ships scanOs off while v4 had it on, and
+# an instance that scanned OS packages must keep scanning them.
+#
 # Never fatal: a module that scans nothing is a nuisance, a failed update is
 # worse.
 #
@@ -66,8 +70,19 @@ if [[ "${code}" != "201" && "${code}" != "409" ]]; then
     exit 0
 fi
 
-config_body=$(U="${TRIVY_URL}" N="${SECRET_NAME}" python3 -c \
-    'import json,os;print(json.dumps({"config":{"enabled":True,"apiUrl":os.environ["U"],"apiToken":os.environ["N"],"scanLibrary":True,"scanOs":False,"ignoreUnfixed":False}}))')
+config_body=$(U="${TRIVY_URL}" N="${SECRET_NAME}" \
+    E="${DT_TRIVY_ENABLED:-true}" I="${DT_TRIVY_IGNORE_UNFIXED:-false}" \
+    L="${DT_TRIVY_SCAN_LIBRARY:-true}" O="${DT_TRIVY_SCAN_OS:-true}" python3 -c '
+import json, os
+flag = lambda name: os.environ[name].strip().lower() == "true"
+print(json.dumps({"config": {
+    "enabled": flag("E"),
+    "apiUrl": os.environ["U"],
+    "apiToken": os.environ["N"],
+    "scanLibrary": flag("L"),
+    "scanOs": flag("O"),
+    "ignoreUnfixed": flag("I"),
+}}))')
 
 code=$(call PUT /extension-points/vuln-analyzer/extensions/trivy/config "${config_body}")
 if [[ "${code}" != "200" && "${code}" != "204" ]]; then
@@ -77,4 +92,6 @@ if [[ "${code}" != "200" && "${code}" != "204" ]]; then
 fi
 
 python3 -c 'import agent; agent.set_env("DT_TRIVY_CONFIGURED", "1")'
-echo "Trivy analyzer configured against ${TRIVY_URL}."
+echo "Trivy analyzer configured against ${TRIVY_URL} (enabled=${DT_TRIVY_ENABLED:-true}," \
+     "scanLibrary=${DT_TRIVY_SCAN_LIBRARY:-true}, scanOs=${DT_TRIVY_SCAN_OS:-true}," \
+     "ignoreUnfixed=${DT_TRIVY_IGNORE_UNFIXED:-false})."

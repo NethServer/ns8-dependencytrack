@@ -8,17 +8,11 @@
 #
 # Point the v5 Trivy analyzer at the Trivy server this module runs.
 #
-# v5 keeps analyzer credentials in a secret manager and has the extension
-# reference the secret by name, so this takes two calls. It needs the API key
-# seeded by module-migrate-v5, which is why a fresh install still configures the
-# analyzer by hand.
+# v5 has the extension reference its credential by name, so this takes two
+# calls, and both need the API key seeded by module-migrate-v5. DT_TRIVY_*
+# carries the v4 settings; the defaults here are v4's, not v5's.
 #
-# The DT_TRIVY_* variables carry the settings read from the v4 database. Their
-# defaults here are v4's, not v5's: v5 ships scanOs off while v4 had it on, and
-# an instance that scanned OS packages must keep scanning them.
-#
-# Never fatal: a module that scans nothing is a nuisance, a failed update is
-# worse.
+# Never fatal: an analyzer left off is a nuisance, a failed update is worse.
 #
 
 set -e -o pipefail
@@ -91,9 +85,7 @@ if [[ "${code}" != "200" && "${code}" != "204" ]]; then
     exit 0
 fi
 
-# "prepared" means the secret and the URL are in place but v4 had the analyzer
-# off, so it stays off: enabling it is now one click instead of a two-step
-# trip through the secret manager.
+# "prepared": secret and URL in place, but v4 had it off so it stays off.
 if [[ "${DT_TRIVY_ENABLED:-true}" == "true" ]]; then
     setup_state=enabled
 else

@@ -56,51 +56,27 @@ To Update the instance:
 
 ### Upgrading from Dependency-Track v4 to v5
 
-Dependency-Track v5 is not an in-place upgrade of v4: the v5 API server must never start
-against a v4 database schema. When an instance still running v4 is updated, the module
-migrates the database automatically during `update-module`, with the official
-[v4-migrator](https://dependencytrack.github.io/docs/next/guides/administration/migrating-from-v4/)
-tool:
+v5 is not an in-place upgrade of v4: its API server must never start against a v4 schema.
+Updating an instance still on v4 migrates the database automatically, with the official
+[v4-migrator](https://dependencytrack.github.io/docs/next/guides/administration/migrating-from-v4/):
+the pod is stopped, the v4 data is dumped to `state/backup-v4/dependencytrack-v4.pg_dump` and
+kept there, the data is copied offline into a fresh v5 database, and `postgres-data` is
+replaced with it. The same runs during `restore-module`, since a backup taken before the
+upgrade restores a v4 database.
 
-- the pod is stopped, so nothing writes to the database,
-- the v4 data is dumped to `state/backup-v4/dependencytrack-v4.pg_dump` and kept there,
-- the data is copied offline into a fresh v5 database, then verified,
-- the `postgres-data` volume is replaced with the migrated database and the pod is started.
+Fresh installs and already migrated instances are left alone. On failure the services stay
+stopped, the error is in the journal, and the next run resumes; fix the cause and update again.
 
-The same migration runs during `restore-module`, because a backup taken before the upgrade
-restores a v4 database into the v5 module. There the schema is always inspected, since the
-recorded schema version describes the instance before the restore, not the data that was just
-loaded.
+v5 cannot decrypt what v4 encrypted, so the migrator clears every secret. Repository passwords
+are cleared and their repository disabled, analyzer and integration tokens are dropped, and
+notification rules arrive disabled. Everything else migrates: projects, components,
+vulnerabilities, findings, policies, users, teams and permissions.
 
-The migration runs only when a v4 schema is found. Fresh installs and already migrated
-instances are left untouched, and the module records `DT_SCHEMA_MAJOR=5` in its state so the
-check is not repeated on later updates.
-
-If the migration fails the services are left stopped on purpose and the error is reported in
-the journal. Until the migrated database is swapped in, the original data is untouched; from
-that point on it is the `state/backup-v4/dependencytrack-v4.pg_dump` copy and the migrated dump
-that carry it, and the next run resumes the swap. Either way, fix the cause and run
-`update-module` again, or restore the module again if the failure happened during a restore.
-
-After the migration, some settings have to be entered again. v5 stores secrets in a new
-database-backed keystore and cannot decrypt what v4 encrypted, so the migrator wipes them
-rather than carry unreadable values:
-
-- **the Trivy analyzer is reconfigured by the module**. v5 turned it into a plugin whose
-  runtime configuration the migrator does not map, so it would come back disabled and silent.
-  Since the module owns the Trivy token, the migration seeds an API key for itself, stores the
-  token in the v5 secret manager and points the analyzer at it. The switches are read from the
-  v4 database and carried over, because their defaults differ: v4 scanned OS packages by
-  default, v5 does not. An analyzer that was off in v4 stays off, with its URL and token
-  stored so that enabling it later is a single switch. An analyzer pointed at some other Trivy
-  server is left untouched, since that token is encrypted and gone. The Settings page says
-  which of the three happened.
-- authenticated repositories lose their password and are disabled,
-- analyzer tokens, SMTP and LDAP passwords and integration keys are cleared,
-- notification rules arrive disabled, their publisher configuration having been rebuilt.
-
-Everything else is migrated: projects, components, vulnerabilities, findings, policies, users,
-teams and permissions.
+Trivy is the exception, since the module owns that token: the migration stores it in the v5
+secret manager and configures the analyzer with the settings it had in v4. An analyzer that
+was off stays off, ready to be switched on; one pointed at another Trivy server is left
+untouched. The Settings page reports which of the three happened, along with what is left to
+re-enter by hand.
 
 ## Debug
 

@@ -51,8 +51,7 @@ else
     retry_hint="run update-module again"
 fi
 
-# The marker describes the instance from before a restore, not what the backup
-# just put in the database.
+# The marker describes the instance from before a restore, not the backup content.
 if [[ -z "${inspect_only}" && ! -f "${SWAP_FLAG}" && "${DT_SCHEMA_MAJOR:-}" == "5" ]]; then
     exit 0
 fi
@@ -106,8 +105,7 @@ mark_migrated() {
     python3 -c 'import agent; agent.set_env("DT_SCHEMA_MAJOR", "5")'
 }
 
-# Surfaced by get-configuration, so the Settings page can tell the admin which
-# settings v5 could not carry over. Cleared by dismiss-migration-notice.
+# Read by get-configuration, cleared by dismiss-migration-notice.
 raise_migration_notice() {
     python3 -c 'import agent; agent.set_env("DT_MIGRATION_NOTICE", "1")'
 }
@@ -151,10 +149,8 @@ run_migrator() {
         --target-url "${JDBC_DST}" --target-user postgres --target-pass "${POSTGRES_TOKEN}"
 }
 
-# v5 has no way to preset an API key, and the two calls that configure the Trivy
-# analyzer need one. The migrated database is ours and offline right here, so
-# seed a team and a key directly. Key format and hashing come from Alpine's
-# ApiKeyGenerator: odt_<publicId 8>_<secret 32>, stored as a SHA3-256 hex digest.
+# v5 cannot be given an API key, and the calls below need one. Format and
+# hashing come from Alpine's ApiKeyGenerator.
 create_api_key() {
     local pub sec hash
     read -r pub sec hash < <(python3 - <<'EOS'
@@ -285,9 +281,7 @@ fi
 
 echo "Dependency-Track v4 schema detected, starting the migration to v5."
 
-# Read the Trivy settings while the v4 database is still intact. They are plain
-# booleans, only the token is encrypted, and the module owns that one. Defaults
-# are v4's, which differ from v5's: scanOs is on in v4 and off in v5.
+# Defaults are v4's, not v5's: scanOs is on in v4 and off in v5.
 read_v4_flag() {
     local value
     value=$(src_query "SELECT \"PROPERTYVALUE\" FROM \"CONFIGPROPERTY\"
@@ -300,9 +294,7 @@ DT_TRIVY_SCAN_LIBRARY=$(read_v4_flag trivy.scanner.scanLibrary true)
 DT_TRIVY_SCAN_OS=$(read_v4_flag trivy.scanner.scanOs true)
 export DT_TRIVY_ENABLED DT_TRIVY_IGNORE_UNFIXED DT_TRIVY_SCAN_LIBRARY DT_TRIVY_SCAN_OS
 
-# An instance pointed at somebody else's Trivy server must be left alone: our
-# token belongs to the server this module runs, and theirs is encrypted and
-# gone. Rewriting the URL would silently move their analysis elsewhere.
+# Their token is encrypted and gone, so another server means hands off.
 v4_trivy_url=$(read_v4_flag trivy.base.url "")
 
 mkdir -p "${BACKUP_DIR}"
@@ -322,7 +314,6 @@ run_migrator run \
 run_migrator verify
 run_migrator cleanup
 
-# A missing key only costs the automatic Trivy setup below, never the migration.
 if ! create_api_key; then
     echo "${SD_WARN}Could not create an API key for the module: Dependency-Track will have to"
     echo "${SD_WARN}be configured by hand."
@@ -336,8 +327,7 @@ mark_migrated
 raise_migration_notice
 finish
 
-# Needs the apiserver up, so only on the path that started it. The restore path
-# leaves the pod to configure-module and the admin does this from the UI.
+# Needs the apiserver up, so only on the path that started it.
 if [[ -n "${v4_trivy_url}" && "${v4_trivy_url}" != "${TRIVY_URL}" ]]; then
     echo "${SD_WARN}Trivy was pointed at ${v4_trivy_url}, not at the server this module runs."
     echo "${SD_WARN}Leaving the analyzer alone: its token cannot be recovered from v4."

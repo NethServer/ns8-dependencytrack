@@ -281,21 +281,40 @@ fi
 
 echo "Dependency-Track v4 schema detected, starting the migration to v5."
 
-# Defaults are v4's, not v5's: scanOs is on in v4 and off in v5.
-read_v4_flag() {
+# v5 turned the analyzers into plugins whose runtime config the migrator does
+# not populate, so every switch below has to be carried over by hand. Defaults
+# are v4's, not v5's: scanOs and ossindex are on in v4 and off in v5.
+read_v4_property() {
     local value
     value=$(src_query "SELECT \"PROPERTYVALUE\" FROM \"CONFIGPROPERTY\"
-                        WHERE \"GROUPNAME\" = 'scanner' AND \"PROPERTYNAME\" = '$1'")
-    echo "${value:-$2}"
+                        WHERE \"GROUPNAME\" = '$1' AND \"PROPERTYNAME\" = '$2'")
+    echo "${value:-$3}"
 }
-DT_TRIVY_ENABLED=$(read_v4_flag trivy.enabled false)
-DT_TRIVY_IGNORE_UNFIXED=$(read_v4_flag trivy.ignore.unfixed false)
-DT_TRIVY_SCAN_LIBRARY=$(read_v4_flag trivy.scanner.scanLibrary true)
-DT_TRIVY_SCAN_OS=$(read_v4_flag trivy.scanner.scanOs true)
-export DT_TRIVY_ENABLED DT_TRIVY_IGNORE_UNFIXED DT_TRIVY_SCAN_LIBRARY DT_TRIVY_SCAN_OS
+DT_TRIVY_ENABLED=$(read_v4_property scanner trivy.enabled false)
+DT_TRIVY_IGNORE_UNFIXED=$(read_v4_property scanner trivy.ignore.unfixed false)
+DT_TRIVY_SCAN_LIBRARY=$(read_v4_property scanner trivy.scanner.scanLibrary true)
+DT_TRIVY_SCAN_OS=$(read_v4_property scanner trivy.scanner.scanOs true)
+DT_INTERNAL_ENABLED=$(read_v4_property scanner internal.enabled true)
+DT_NVD_ENABLED=$(read_v4_property vuln-source nvd.enabled true)
+DT_NVD_FEEDS_URL=$(read_v4_property vuln-source nvd.feeds.url https://nvd.nist.gov/feeds)
+DT_OSV_ECOSYSTEMS=$(read_v4_property vuln-source google.osv.enabled "")
+DT_OSV_URL=$(read_v4_property vuln-source google.osv.base.url https://osv-vulnerabilities.storage.googleapis.com)
+DT_OSV_ALIAS_SYNC=$(read_v4_property vuln-source google.osv.alias.sync.enabled false)
+DT_OSSINDEX_ENABLED=$(read_v4_property scanner ossindex.enabled true)
+DT_OSSINDEX_URL=$(read_v4_property scanner ossindex.base.url https://ossindex.sonatype.org)
+DT_OSSINDEX_USERNAME=$(read_v4_property scanner ossindex.api.username "")
+DT_OSSINDEX_ALIAS_SYNC=$(read_v4_property scanner ossindex.alias.sync.enabled true)
+DT_GITHUB_ENABLED=$(read_v4_property vuln-source github.advisories.enabled false)
+DT_SNYK_ENABLED=$(read_v4_property scanner snyk.enabled false)
+DT_VULNDB_ENABLED=$(read_v4_property scanner vulndb.enabled false)
+export DT_TRIVY_ENABLED DT_TRIVY_IGNORE_UNFIXED DT_TRIVY_SCAN_LIBRARY DT_TRIVY_SCAN_OS \
+    DT_INTERNAL_ENABLED DT_NVD_ENABLED DT_NVD_FEEDS_URL \
+    DT_OSV_ECOSYSTEMS DT_OSV_URL DT_OSV_ALIAS_SYNC \
+    DT_OSSINDEX_ENABLED DT_OSSINDEX_URL DT_OSSINDEX_USERNAME DT_OSSINDEX_ALIAS_SYNC \
+    DT_GITHUB_ENABLED DT_SNYK_ENABLED DT_VULNDB_ENABLED
 
 # Their token is encrypted and gone, so another server means hands off.
-v4_trivy_url=$(read_v4_flag trivy.base.url "")
+v4_trivy_url=$(read_v4_property scanner trivy.base.url "")
 
 mkdir -p "${BACKUP_DIR}"
 podman exec "${SRC_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V4_DUMP}"
@@ -332,7 +351,7 @@ if [[ -n "${v4_trivy_url}" && "${v4_trivy_url}" != "${TRIVY_URL}" ]]; then
     echo "${SD_WARN}Trivy was pointed at ${v4_trivy_url}, not at the server this module runs."
     echo "${SD_WARN}Leaving the analyzer alone: its token cannot be recovered from v4."
 elif [[ "${was_running}" == "yes" ]]; then
-    "${AGENT_INSTALL_DIR}/bin/module-setup-trivy-analyzer" || true
+    "${AGENT_INSTALL_DIR}/bin/module-setup-analyzers" || true
 fi
 
 echo "Migration to Dependency-Track v5 complete."

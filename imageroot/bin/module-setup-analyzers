@@ -1,0 +1,161 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2026 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# Carry the v4 analyzers and vulnerability sources over to v5.
+#
+# v5 turned them into plugins whose runtime config the migrator does not
+# populate, so every instance would come back on v5 defaults. The DT_* variables
+# hold what module-migrate-v5 read from the v4 database; the defaults here are
+# v4's, not v5's.
+#
+# Anything needing a credential v4 had encrypted stays off: that secret is gone.
+# Trivy is the exception, since the module owns its token.
+#
+# Never fatal: an analyzer left off is a nuisance, a failed update is worse.
+#
+
+set -e -o pipefail
+exec 1>&2
+
+cd "${AGENT_STATE_DIR}"
+
+SD_WARN='<4>'
+
+API="http://127.0.0.1:${TCP_PORT}/api"
+SECRET_NAME="trivy-api-token"
+TRIVY_URL="http://127.0.0.1:8282"
+
+read_secret() {
+    grep -E "^$1=" secrets.env | cut -d= -f2- || true
+}
+
+api_key=$(read_secret DT_API_KEY)
+trivy_token=$(read_secret TRIVY_TOKEN)
+if [[ -z "${api_key}" || -z "${trivy_token}" ]]; then
+    echo "${SD_WARN}No API key or Trivy token in secrets.env, leaving the analyzers alone."
+    exit 0
+fi
+
+# The apiserver runs its init tasks before serving, which takes a while.
+for _ in $(seq 1 60); do
+    if curl -sf -o /dev/null "${API}/version"; then
+        break
+    fi
+    sleep 5
+done
+
+call() {
+    local method="$1" path="$2" body="$3"
+    curl -sS -o /dev/null -w '%{http_code}' -X "${method}" "${API}/v2${path}" \
+        -H "X-Api-Key: ${api_key}" \
+        -H "Content-Type: application/json" \
+        -d "${body}" || true
+}
+
+# 304 means what we sent is already stored, which happens whenever a v4 setting
+# matches the v5 default.
+put_extension_config() {
+    local point="$1" extension="$2" body="$3" code
+    code=$(call PUT "/extension-points/${point}/extensions/${extension}/config" "${body}")
+    case "${code}" in
+        200 | 204 | 304) return 0 ;;
+    esac
+    echo "${SD_WARN}Could not configure ${extension} (HTTP ${code}), do it by hand."
+    return 1
+}
+
+# 409 means the secret survived from an earlier run, which is just as good.
+secret_body=$(N="${SECRET_NAME}" V="${trivy_token}" python3 -c \
+    'import json,os;print(json.dumps({"name":os.environ["N"],"value":os.environ["V"]}))')
+code=$(call POST /secrets "${secret_body}")
+if [[ "${code}" != "201" && "${code}" != "409" ]]; then
+    echo "${SD_WARN}Could not store the Trivy token as a Dependency-Track secret (HTTP ${code})."
+    echo "${SD_WARN}Configure the Trivy analyzer by hand, the values are in the module settings."
+    exit 0
+fi
+
+trivy_state=none
+if body=$(U="${TRIVY_URL}" N="${SECRET_NAME}" \
+    E="${DT_TRIVY_ENABLED:-true}" I="${DT_TRIVY_IGNORE_UNFIXED:-false}" \
+    L="${DT_TRIVY_SCAN_LIBRARY:-true}" O="${DT_TRIVY_SCAN_OS:-true}" python3 -c '
+import json, os
+flag = lambda name: os.environ[name].strip().lower() == "true"
+print(json.dumps({"config": {
+    "enabled": flag("E"),
+    "apiUrl": os.environ["U"],
+    "apiToken": os.environ["N"],
+    "scanLibrary": flag("L"),
+    "scanOs": flag("O"),
+    "ignoreUnfixed": flag("I"),
+}}))') && put_extension_config vuln-analyzer trivy "${body}"; then
+    # "prepared": secret and URL in place, but v4 had it off so it stays off.
+    if [[ "${DT_TRIVY_ENABLED:-true}" == "true" ]]; then
+        trivy_state=enabled
+    else
+        trivy_state=prepared
+    fi
+fi
+
+body=$(E="${DT_INTERNAL_ENABLED:-true}" python3 -c \
+    'import json,os;print(json.dumps({"config":{"enabled":os.environ["E"].strip().lower()=="true"}}))')
+put_extension_config vuln-analyzer internal "${body}" || true
+
+body=$(E="${DT_NVD_ENABLED:-true}" U="${DT_NVD_FEEDS_URL:-https://nvd.nist.gov/feeds}" python3 -c \
+    'import json,os;print(json.dumps({"config":{"enabled":os.environ["E"].strip().lower()=="true","cveFeedsUrl":os.environ["U"]}}))')
+put_extension_config vuln-data-source nvd "${body}" || true
+
+# v4 stored the OSV ecosystems as a semicolon separated list, empty meaning off.
+# v5 keeps them in an array and refuses an empty one while enabled.
+body=$(L="${DT_OSV_ECOSYSTEMS:-}" U="${DT_OSV_URL:-https://osv-vulnerabilities.storage.googleapis.com}" \
+    A="${DT_OSV_ALIAS_SYNC:-false}" python3 -c '
+import json, os
+ecosystems = [e.strip() for e in os.environ["L"].split(";") if e.strip()]
+config = {
+    "enabled": bool(ecosystems),
+    "dataUrl": os.environ["U"],
+    "aliasSyncEnabled": os.environ["A"].strip().lower() == "true",
+}
+if ecosystems:
+    config["ecosystems"] = ecosystems
+print(json.dumps({"config": config}))')
+put_extension_config vuln-data-source osv "${body}" || true
+
+# v5 refuses to run OSS Index anonymously, and v4 encrypted its token. Store
+# what survives so that adding a token is all that is left to do.
+body=$(U="${DT_OSSINDEX_URL:-https://ossindex.sonatype.org}" N="${DT_OSSINDEX_USERNAME:-}" \
+    A="${DT_OSSINDEX_ALIAS_SYNC:-true}" python3 -c '
+import json, os
+config = {
+    "enabled": False,
+    "apiUrl": os.environ["U"],
+    "aliasSyncEnabled": os.environ["A"].strip().lower() == "true",
+}
+if os.environ["N"]:
+    config["username"] = os.environ["N"]
+print(json.dumps({"config": config}))')
+put_extension_config vuln-analyzer oss-index "${body}" || true
+
+# Named in the Settings page: v4 had them running, v5 wants a token we lost.
+pending=""
+add_pending() {
+    [[ "${2}" == "true" ]] && pending="${pending:+${pending},}$1"
+    return 0
+}
+add_pending oss-index "${DT_OSSINDEX_ENABLED:-true}"
+add_pending github "${DT_GITHUB_ENABLED:-false}"
+add_pending snyk "${DT_SNYK_ENABLED:-false}"
+add_pending vuln-db "${DT_VULNDB_ENABLED:-false}"
+
+STATE="${trivy_state}" PENDING="${pending}" python3 -c '
+import agent, os
+agent.set_env("DT_TRIVY_SETUP", os.environ["STATE"])
+agent.set_env("DT_ANALYZERS_PENDING", os.environ["PENDING"])'
+
+echo "Analyzers carried over: trivy=${trivy_state}, internal=${DT_INTERNAL_ENABLED:-true}," \
+     "nvd=${DT_NVD_ENABLED:-true}, osv=[${DT_OSV_ECOSYSTEMS:-}]." \
+     "Still needing a token: ${pending:-none}."

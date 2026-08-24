@@ -72,11 +72,15 @@ are cleared and their repository disabled, analyzer and integration tokens are d
 notification rules arrive disabled. Everything else migrates: projects, components,
 vulnerabilities, findings, policies, users, teams and permissions.
 
-Trivy is the exception, since the module owns that token: the migration stores it in the v5
-secret manager and configures the analyzer with the settings it had in v4. An analyzer that
-was off stays off, ready to be switched on; one pointed at another Trivy server is left
-untouched. The Settings page reports which of the three happened, along with what is left to
-re-enter by hand.
+v5 also turned every analyzer and vulnerability source into a plugin whose configuration the
+migrator does not carry, so the module copies the v4 settings over for the ones that need no
+secret: the internal analyzer, NVD, and OSV with its list of ecosystems. Trivy is done too,
+since the module owns that token — an analyzer that was off stays off, ready to be switched on,
+and one pointed at another Trivy server is left untouched.
+
+The others cannot follow. OSS Index in particular ran anonymously in v4 and was enabled by
+default; v5 refuses to run it without an API token. Its URL and username are stored so that
+adding a token is all that remains. The Settings page names whatever is in that state.
 
 ## Debug
 

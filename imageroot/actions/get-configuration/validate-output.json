@@ -50,6 +50,11 @@
             ],
             "title": "Trivy analyzer setup",
             "description": "What the module did to the Trivy analyzer in Dependency-Track: nothing, stored its settings while leaving it off, or enabled it."
+        },
+        "analyzers_pending": {
+            "type": "string",
+            "title": "Analyzers still needing a token",
+            "description": "Comma separated names of the analyzers and vulnerability sources that v4 had enabled and that v5 cannot run until their API token is entered again."
         }
     }
 }

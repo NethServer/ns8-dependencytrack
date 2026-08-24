@@ -91,7 +91,16 @@ if [[ "${code}" != "200" && "${code}" != "204" ]]; then
     exit 0
 fi
 
-python3 -c 'import agent; agent.set_env("DT_TRIVY_CONFIGURED", "1")'
-echo "Trivy analyzer configured against ${TRIVY_URL} (enabled=${DT_TRIVY_ENABLED:-true}," \
-     "scanLibrary=${DT_TRIVY_SCAN_LIBRARY:-true}, scanOs=${DT_TRIVY_SCAN_OS:-true}," \
+# "prepared" means the secret and the URL are in place but v4 had the analyzer
+# off, so it stays off: enabling it is now one click instead of a two-step
+# trip through the secret manager.
+if [[ "${DT_TRIVY_ENABLED:-true}" == "true" ]]; then
+    setup_state=enabled
+else
+    setup_state=prepared
+fi
+STATE="${setup_state}" python3 -c 'import agent, os; agent.set_env("DT_TRIVY_SETUP", os.environ["STATE"])'
+
+echo "Trivy analyzer ${setup_state} against ${TRIVY_URL}" \
+     "(scanLibrary=${DT_TRIVY_SCAN_LIBRARY:-true}, scanOs=${DT_TRIVY_SCAN_OS:-true}," \
      "ignoreUnfixed=${DT_TRIVY_IGNORE_UNFIXED:-false})."

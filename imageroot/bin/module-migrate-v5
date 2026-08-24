@@ -31,6 +31,7 @@ NET="dt_migrate_net"
 DST_VOL="postgres-migrate-v5"
 DB="dependencytrack"
 BACKUP_DIR="backup-v4"
+TRIVY_URL="http://127.0.0.1:8282"
 # Not state/restore/: postgresql-app.service mounts it as
 # /docker-entrypoint-initdb.d/, where a leftover restore script would run.
 WORK_DIR="migrate-v5"
@@ -299,6 +300,11 @@ DT_TRIVY_SCAN_LIBRARY=$(read_v4_flag trivy.scanner.scanLibrary true)
 DT_TRIVY_SCAN_OS=$(read_v4_flag trivy.scanner.scanOs true)
 export DT_TRIVY_ENABLED DT_TRIVY_IGNORE_UNFIXED DT_TRIVY_SCAN_LIBRARY DT_TRIVY_SCAN_OS
 
+# An instance pointed at somebody else's Trivy server must be left alone: our
+# token belongs to the server this module runs, and theirs is encrypted and
+# gone. Rewriting the URL would silently move their analysis elsewhere.
+v4_trivy_url=$(read_v4_flag trivy.base.url "")
+
 mkdir -p "${BACKUP_DIR}"
 podman exec "${SRC_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V4_DUMP}"
 echo "v4 backup written to state/${V4_DUMP}"
@@ -332,7 +338,10 @@ finish
 
 # Needs the apiserver up, so only on the path that started it. The restore path
 # leaves the pod to configure-module and the admin does this from the UI.
-if [[ "${was_running}" == "yes" ]]; then
+if [[ -n "${v4_trivy_url}" && "${v4_trivy_url}" != "${TRIVY_URL}" ]]; then
+    echo "${SD_WARN}Trivy was pointed at ${v4_trivy_url}, not at the server this module runs."
+    echo "${SD_WARN}Leaving the analyzer alone: its token cannot be recovered from v4."
+elif [[ "${was_running}" == "yes" ]]; then
     "${AGENT_INSTALL_DIR}/bin/module-setup-trivy-analyzer" || true
 fi
 

@@ -24,7 +24,7 @@ secrets = agent.read_envfile("secrets.env")
 config["trivy_token"] = secrets["TRIVY_TOKEN"]
 config["trivy_url"] = "http://127.0.0.1:8282"
 config["migration_notice"] = os.getenv("DT_MIGRATION_NOTICE") == "1"
-config["trivy_configured"] = os.getenv("DT_TRIVY_CONFIGURED") == "1"
+config["trivy_setup"] = os.getenv("DT_TRIVY_SETUP", "none")
 
 # Dump the configuration to stdout
 json.dump(config, fp=sys.stdout)

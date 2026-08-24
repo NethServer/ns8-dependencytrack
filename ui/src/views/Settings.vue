@@ -175,7 +175,7 @@ export default {
       trivy_token: "",
       isShownSetupKey: false,
       migrationNotice: false,
-      trivyConfigured: false,
+      trivySetup: "none",
       loading: {
         getConfiguration: false,
         configureModule: false,
@@ -193,9 +193,14 @@ export default {
   computed: {
     ...mapState(["instanceName", "core", "appName"]),
     migrationNoticeDescription() {
-      return this.trivyConfigured
-        ? this.$t("settings.migration_notice_description_trivy_ok")
-        : this.$t("settings.migration_notice_description");
+      switch (this.trivySetup) {
+        case "enabled":
+          return this.$t("settings.migration_notice_description_trivy_ok");
+        case "prepared":
+          return this.$t("settings.migration_notice_description_trivy_prepared");
+        default:
+          return this.$t("settings.migration_notice_description");
+      }
     },
   },
   created() {
@@ -265,7 +270,7 @@ export default {
       this.trivy_url = config.trivy_url;
       this.trivy_token = config.trivy_token;
       this.migrationNotice = config.migration_notice;
-      this.trivyConfigured = config.trivy_configured;
+      this.trivySetup = config.trivy_setup;
       this.loading.getConfiguration = false;
       this.focusElement("host");
     },

@@ -52,7 +52,8 @@
     "migration_notice_title": "Dependency-Track has been migrated to version 5",
     "migration_notice_description": "Version 5 cannot decrypt the secrets stored by version 4, so they were cleared. Set the Trivy URL and token again in the Dependency-Track interface: save the token as a secret first, then select it in the Trivy analyzer. You find both values under Advanced below. Repository passwords, analyzer tokens and integration keys also have to be entered again, and notification rules are disabled until you re-enable them.",
     "migration_notice_action": "Got it",
-    "migration_notice_description_trivy_ok": "Version 5 cannot decrypt the secrets stored by version 4, so they were cleared. The module reconfigured the Trivy analyzer for you. Repository passwords, other analyzer tokens and integration keys still have to be entered again, and notification rules are disabled until you re-enable them."
+    "migration_notice_description_trivy_ok": "Version 5 cannot decrypt the secrets stored by version 4, so they were cleared. The module reconfigured the Trivy analyzer for you, with the settings it had in version 4. Repository passwords, other analyzer tokens and integration keys still have to be entered again, and notification rules are disabled until you re-enable them.",
+    "migration_notice_description_trivy_prepared": "Version 5 cannot decrypt the secrets stored by version 4, so they were cleared. Trivy was turned off in version 4, so it stays off, but the module stored its URL and token for you: enabling the analyzer is now a single switch. Repository passwords, other analyzer tokens and integration keys still have to be entered again, and notification rules are disabled until you re-enable them."
   },
   "about": {
     "title": "About"

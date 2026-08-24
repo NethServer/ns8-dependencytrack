@@ -194,25 +194,16 @@ export default {
   computed: {
     ...mapState(["instanceName", "core", "appName"]),
     migrationNoticeDescription() {
-      let description;
-      switch (this.trivySetup) {
-        case "enabled":
-          description = this.$t("settings.migration_notice_description_trivy_ok");
-          break;
-        case "prepared":
-          description = this.$t("settings.migration_notice_description_trivy_prepared");
-          break;
-        default:
-          description = this.$t("settings.migration_notice_description");
-      }
-      if (this.analyzersPending) {
-        description +=
-          " " +
-          this.$t("settings.migration_notice_analyzers", {
-            analyzers: this.analyzersPending.split(",").join(", "),
-          });
-      }
-      return description;
+      const analyzers = this.analyzersPending
+        ? this.analyzersPending.split(",").join(", ")
+        : "";
+      return [
+        this.$t("settings.migration_notice_intro"),
+        this.$t("settings.migration_notice_trivy_" + this.trivySetup),
+        analyzers
+          ? this.$t("settings.migration_notice_todo_analyzers", { analyzers })
+          : this.$t("settings.migration_notice_todo"),
+      ].join(" ");
     },
   },
   created() {

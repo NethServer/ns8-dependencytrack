@@ -50,11 +50,13 @@
     "trivy_url_tooltip": "The URL of the Trivy server to use for vulnerability scanning. it must be set inside the Dependency-Track user interface.",
     "trivy_token_tooltip": "The Trivy token to use for vulnerability scanning. it must be set inside the Dependency-Track user interface.",
     "migration_notice_title": "Dependency-Track has been migrated to version 5",
-    "migration_notice_description": "Version 5 cannot decrypt the secrets stored by version 4, so they were cleared. Set the Trivy URL and token again in the Dependency-Track interface: save the token as a secret first, then select it in the Trivy analyzer. You find both values under Advanced below. Repository passwords, analyzer tokens and integration keys also have to be entered again, and notification rules are disabled until you re-enable them.",
     "migration_notice_action": "Got it",
-    "migration_notice_description_trivy_ok": "Version 5 cannot decrypt the secrets stored by version 4, so they were cleared. The module reconfigured the Trivy analyzer for you, with the settings it had in version 4. Repository passwords, other analyzer tokens and integration keys still have to be entered again, and notification rules are disabled until you re-enable them.",
-    "migration_notice_description_trivy_prepared": "Version 5 cannot decrypt the secrets stored by version 4, so they were cleared. Trivy was turned off in version 4, so it stays off, but the module stored its URL and token for you: enabling the analyzer is now a single switch. Repository passwords, other analyzer tokens and integration keys still have to be entered again, and notification rules are disabled until you re-enable them.",
-    "migration_notice_analyzers": "These analyzers were running before the upgrade and stay off until you enter their API token again: {analyzers}."
+    "migration_notice_intro": "Version 5 cannot decrypt the secrets stored by version 4, so they were cleared.",
+    "migration_notice_trivy_enabled": "The module reconfigured the Trivy analyzer with the settings it had in version 4.",
+    "migration_notice_trivy_prepared": "Trivy stays off as it was in version 4, but its URL and token are stored, so enabling it is now a single switch.",
+    "migration_notice_trivy_none": "The Trivy analyzer has to be set up by hand.",
+    "migration_notice_todo": "Still to do by hand: re-enter repository passwords and integration keys, and re-enable the notification rules.",
+    "migration_notice_todo_analyzers": "Still to do by hand: enter the API token of {analyzers}, re-enter repository passwords and integration keys, and re-enable the notification rules."
   },
   "about": {
     "title": "About"

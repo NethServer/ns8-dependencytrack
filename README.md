@@ -121,8 +121,12 @@ On the node hosting the instance, from the copy phase 1 left behind:
 
     runagent -m dependencytrack1 bash upgrade2V5.sh analyzers
 
-This enables and starts the services, replays the v4 analyzer settings against the v5 API,
-then prints what is left to do by hand.
+This refuses to run unless the instance really is on 2.0.0, then enables and starts the
+services, replays the v4 analyzer settings against the v5 API, and prints what is left to do
+by hand.
+
+Portfolio metrics older than 90 days are not carried over. Findings, audit history, policies
+and everything else are.
 
 ### What v5 cannot carry over
 

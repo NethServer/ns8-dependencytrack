@@ -77,7 +77,8 @@ SELF_COPY="upgrade2V5.sh"
 # Present means a previous run died while replacing postgres-data, so the next
 # run must resume instead of inspecting a volume that is empty at that point.
 SWAP_FLAG="${WORK_DIR}/.swap-in-progress"
-# Mandatory flag of `run`.
+# Mandatory flag of `run`. Portfolio metrics older than this are not copied over;
+# findings, audit history and everything else are unaffected.
 METRICS_RETENTION_DAYS=90
 
 fail() {
@@ -153,11 +154,17 @@ EOS
 DO \$\$
 DECLARE team_id bigint; key_id bigint;
 BEGIN
-    INSERT INTO "TEAM" ("NAME", "UUID")
-        VALUES ('NethServer module', gen_random_uuid()::text) RETURNING "ID" INTO team_id;
+    -- Reuse the team if an earlier run created it and then failed: "NAME" is
+    -- unique, so a plain insert would make every retry fail.
+    SELECT "ID" INTO team_id FROM "TEAM" WHERE "NAME" = 'NethServer module';
+    IF team_id IS NULL THEN
+        INSERT INTO "TEAM" ("NAME", "UUID")
+            VALUES ('NethServer module', gen_random_uuid()::text) RETURNING "ID" INTO team_id;
+    END IF;
     INSERT INTO "TEAMS_PERMISSIONS" ("TEAM_ID", "PERMISSION_ID")
         SELECT team_id, "ID" FROM "PERMISSION"
-         WHERE "NAME" IN ('SECRET_MANAGEMENT', 'SYSTEM_CONFIGURATION');
+         WHERE "NAME" IN ('SECRET_MANAGEMENT', 'SYSTEM_CONFIGURATION')
+        ON CONFLICT DO NOTHING;
     INSERT INTO "APIKEY" ("COMMENT", "CREATED", "SECRET_HASH", "PUBLIC_ID", "IS_LEGACY")
         VALUES ('Used by the NethServer module', now(), '${hash}', '${pub}', false)
         RETURNING "ID" INTO key_id;
@@ -201,6 +208,13 @@ EOS
         "${POSTGRES_IMAGE}" <"${V5_DUMP}"
 
     rm -f "${SWAP_FLAG}" "${V5_DUMP}" "${WORK_DIR}/${DB}_restore.sh"
+}
+
+# Keeps dependencytrack-setup.service of 2.0.0 from configuring Trivy on its own
+# defaults before the analyzer phase replays the v4 ones. Both exits of phase 1
+# need it, the resume path included.
+mark_pending() {
+    python3 -c 'import agent; agent.set_env("DT_TRIVY_SETUP", "pending-migration")'
 }
 
 next_step() {
@@ -267,9 +281,9 @@ phase_migrate() {
     # database. Every unit has to be disabled, not just the pod: the others are
     # WantedBy=default.target too, and their BindsTo would drag the pod back up.
     systemctl --user disable "${UNITS[@]}" >/dev/null 2>&1 || true
-    if systemctl --user --quiet is-active dependencytrack.service; then
-        systemctl --user stop dependencytrack.service
-    fi
+    # Every unit by name rather than the pod alone: not relying on BindsTo to
+    # tear the containers down before postgres-data is reopened below.
+    systemctl --user stop "${UNITS[@]}"
 
     # postgres-data is empty or half loaded here: inspecting it would conclude
     # "fresh install" and replace a database that is already migrated.
@@ -280,6 +294,7 @@ phase_migrate() {
         fi
         echo "Resuming an interrupted migration from state/${V5_DUMP}."
         swap_in_migrated_database
+        mark_pending
         completed=1
         next_step
         return 0
@@ -327,13 +342,17 @@ phase_migrate() {
 
     # An unreadable property must stop the run: recording the v4 default as if
     # it were the admin's setting would push a wrong value into v5.
+    # Appends on its own rather than under a `{ ... } >file` block: such a block
+    # would capture the message of fail(), and the whole EXIT trap, into the file
+    # and leave the journal empty.
     save_v4_property() {
         local value
         value=$(read_v4_property "$2" "$3" "$4") ||
             fail "Could not read the v4 setting $2/$3 from the database."
-        printf '%s=%q\n' "$1" "${value}"
+        printf '%s=%q\n' "$1" "${value}" >>"${ANALYZERS_ENV}.tmp"
     }
 
+    : >"${ANALYZERS_ENV}.tmp"
     {
         save_v4_property DT_TRIVY_URL scanner trivy.base.url ""
         save_v4_property DT_TRIVY_ENABLED scanner trivy.enabled false
@@ -358,7 +377,8 @@ phase_migrate() {
         save_v4_property DT_SNYK_ORG_ID scanner snyk.org.id ""
         save_v4_property DT_SNYK_ALIAS_SYNC scanner snyk.alias.sync.enabled false
         save_v4_property DT_VULNDB_ENABLED scanner vulndb.enabled false
-    } >"${ANALYZERS_ENV}"
+    }
+    mv "${ANALYZERS_ENV}.tmp" "${ANALYZERS_ENV}"
     echo "v4 analyzer settings saved to state/${ANALYZERS_ENV}"
 
     mkdir -p "${BACKUP_DIR}"
@@ -393,10 +413,7 @@ phase_migrate() {
 
     swap_in_migrated_database
 
-    # Keeps dependencytrack-setup.service of 2.0.0 from configuring Trivy on its
-    # own defaults before the analyzer phase replays the v4 ones.
-    python3 -c 'import agent; agent.set_env("DT_TRIVY_SETUP", "pending-migration")'
-
+    mark_pending
     completed=1
     next_step
 }
@@ -410,22 +427,33 @@ phase_analyzers() {
         fail "state/${ANALYZERS_ENV} is missing: run the migration phase first."
     fi
 
+    # Shipped by 2.0.0 only. Run out of order this phase would start a v4
+    # apiserver against the migrated v5 database, the one thing phase 1 exists
+    # to prevent.
+    if [[ ! -f "${AGENT_INSTALL_DIR}/systemd/user/dependencytrack-setup.service" ]]; then
+        fail "This instance is not on 2.0.0 yet. Update it first, then run this phase:" \
+             "see the command printed at the end of the migration phase."
+    fi
+
     local api_key trivy_token
     api_key=$(read_secret DT_API_KEY)
     trivy_token=$(read_secret TRIVY_TOKEN)
-    if [[ -z "${api_key}" ]]; then
-        fail "No DT_API_KEY in secrets.env: configure the analyzers by hand."
-    fi
 
     set -a
     # shellcheck disable=SC1090
     . "./${ANALYZERS_ENV}"
     set +a
 
-    systemctl --user enable "${UNITS[@]}"
-    # Shipped by 2.0.0 only, and it stands down while DT_TRIVY_SETUP is set.
-    systemctl --user enable dependencytrack-setup.service 2>/dev/null || true
+    systemctl --user enable "${UNITS[@]}" dependencytrack-setup.service
     systemctl --user start dependencytrack.service
+
+    # Bringing the instance back up matters more than the analyzers, so this is
+    # checked once the services are running, not before.
+    if [[ -z "${api_key}" ]]; then
+        python3 -c 'import agent; agent.set_env("DT_TRIVY_SETUP", "")'
+        fail "No DT_API_KEY in secrets.env. The instance is up and its data is migrated," \
+             "but the analyzers have to be configured by hand."
+    fi
 
     local api="http://127.0.0.1:${TCP_PORT}/api"
     # The apiserver runs its init tasks before serving, and the first v5 boot
@@ -453,6 +481,7 @@ phase_analyzers() {
 
     # 304 means what we sent is already stored, which happens whenever a v4
     # setting matches the v5 default.
+    failed=""
     put_extension_config() {
         local point="$1" extension="$2" body="$3" code
         code=$(call PUT "/extension-points/${point}/extensions/${extension}/config" "${body}")
@@ -460,13 +489,17 @@ phase_analyzers() {
             200 | 204 | 304) return 0 ;;
         esac
         echo "${SD_WARN}Could not configure ${extension} (HTTP ${code}), do it by hand."
+        failed="${failed:+${failed}, }${extension}"
         return 1
     }
 
     local trivy_state=none
-    if [[ -n "${DT_TRIVY_URL}" && "${DT_TRIVY_URL}" != "${TRIVY_URL}" ]]; then
+    # v4 stores whatever was typed, so compare without a trailing slash: the
+    # module's own Trivy is the one analyzer whose token can be recovered.
+    local v4_trivy_url="${DT_TRIVY_URL%/}"
+    if [[ -n "${v4_trivy_url}" && "${v4_trivy_url}" != "${TRIVY_URL}" ]]; then
         # Their token is encrypted and gone, so another server means hands off.
-        echo "${SD_WARN}Trivy was pointed at ${DT_TRIVY_URL}, not at the server this module runs."
+        echo "${SD_WARN}Trivy was pointed at ${v4_trivy_url}, not at the server this module runs."
         echo "${SD_WARN}Leaving the analyzer alone: its token cannot be recovered from v4."
     elif [[ -z "${trivy_token}" ]]; then
         echo "${SD_WARN}No Trivy token in secrets.env, leaving the analyzer alone."
@@ -580,8 +613,13 @@ print(json.dumps({"config": config}))')
     python3 -c 'import agent; agent.set_env("DT_TRIVY_SETUP", "done")'
 
     echo
-    echo "Upgrade complete. Analyzers carried over: trivy=${trivy_state}," \
-         "internal=${DT_INTERNAL_ENABLED}, nvd=${DT_NVD_ENABLED}, osv=[${DT_OSV_ECOSYSTEMS}]."
+    if [[ -n "${failed}" ]]; then
+        echo "${SD_WARN}Upgrade complete, but these analyzers were rejected and keep the v5"
+        echo "${SD_WARN}defaults: ${failed}. Configure them by hand."
+    else
+        echo "Upgrade complete. Analyzers carried over: trivy=${trivy_state}," \
+             "internal=${DT_INTERNAL_ENABLED}, nvd=${DT_NVD_ENABLED}, osv=[${DT_OSV_ECOSYSTEMS}]."
+    fi
     echo
     echo "${SD_WARN}v5 cannot decrypt what v4 encrypted, so the migrator cleared every secret."
     echo "${SD_WARN}Still to do by hand:"

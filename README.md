@@ -56,85 +56,12 @@ To Update the instance:
 
 ## Upgrading to Dependency-Track v5
 
-Module 2.0.0 runs Dependency-Track v5, whose schema is incompatible with v4. It carries
-`org.nethserver.min-from=2.0.0`, so it is never offered as an automatic update.
+This release adds `scripts/upgrade2V5.sh` and changes nothing else: Dependency-Track stays on
+4.14.3. The script has to reach an instance while it is still on v4, which is why it ships
+here and is gone from 2.0.0.
 
-This release ships `scripts/upgrade2V5.sh`, which drives the official
-[v4-migrator](https://dependencytrack.github.io/docs/next/guides/administration/migrating-from-v4/)
-offline. The application is down for the whole procedure.
-
-The script prints what v5 cannot carry over and asks you to type `I have a backup` before it
-touches anything. `--yes` skips the question, for scripts only.
-
-### 1. Find the node
-
-The instance is not necessarily on the leader:
-
-    api-cli run list-installed-modules | jq '.[][] | select(.module == "dependencytrack")'
-
-Open a shell on the node named by `node`, over the cluster VPN: `ssh root@10.5.4.<node>`.
-
-### 2. Update to 1.0.12
-
-From the leader, so the instance has the script. Dependency-Track stays on 4.14.3.
-
-    api-cli run update-module --data '{"module_url":"ghcr.io/nethserver/dependencytrack:1.0.12","instances":["dependencytrack1"],"force":true}'
-
-### 3. Migrate the database
-
-On the node:
-
-    runagent -m dependencytrack1 bash ../scripts/upgrade2V5.sh
-
-It stops and disables the pod, keeps the v4 dump in `state/backup-v4/`, migrates into a fresh
-v5 database and swaps `postgres-data`. Services are left down, and disabled so a reboot cannot
-start a v4 API server against the migrated database.
-
-### 4. Update to 2.0.0
-
-From the leader. An explicit `update-module` is not subject to `min-from`.
-
-    api-cli run update-module --data '{"module_url":"ghcr.io/nethserver/dependencytrack:2.0.0","instances":["dependencytrack1"],"force":true}'
-
-### 5. Restore the analyzers and start
-
-On the node, from the copy phase 1 left behind:
-
-    runagent -m dependencytrack1 bash upgrade2V5.sh analyzers
-
-It refuses to run unless the instance is on 2.0.0, starts the services, replays the v4
-analyzer settings and prints what is left to do by hand.
-
-### 6. Reclaim the disk
-
-The v4 dump is not included in module backups and can be several gigabytes. Once the instance
-checks out, back it up — existing snapshots restore it as it was, on v4 — then:
-
-    api-cli run run-backup --data '{"id": <backup id>}'
-    runagent -m dependencytrack1 rm -rf backup-v4 upgrade2V5.sh migrate-v5
-
-### What v5 cannot carry over
-
-v5 cannot decrypt what v4 encrypted, so every secret is cleared: repository passwords, with
-their repository disabled, analyzer and integration tokens, and notification rules come back
-disabled. Portfolio metrics older than 90 days are dropped. Everything else is preserved.
-
-v5 also turned the analyzers into plugins the migrator leaves unconfigured, so the script
-applies the v4 settings again:
-
-| Analyzer or source | Carried over |
-| --- | --- |
-| Internal, NVD, OSV, Trivy | fully, including Trivy's token |
-| OSS Index, GitHub Advisories, Snyk | everything but the token, so they stay off until you enter it |
-| VulnDB | nothing: v4 used OAuth1, v5 expects OAuth2 |
-
-A Trivy pointed at another server is left alone, its token cannot be recovered either.
-
-### On failure
-
-Services stay down, the error is in the journal
-(`journalctl _UID=$(id -u dependencytrack1) -e`), both dumps stay on disk. Fix the cause and
-run the script again: it resumes.
+Update to this release, then follow the procedure in the
+[2.0.0 README](https://github.com/NethServer/ns8-dependencytrack#upgrading-from-dependency-track-v4-to-v5).
 
 ## Debug
 

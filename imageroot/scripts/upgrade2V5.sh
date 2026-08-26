@@ -221,11 +221,21 @@ EOS
 # rather than have the script hang on a read nobody sees.
 confirm_backup() {
     echo
-    echo "This rewrites the ${MODULE_ID} database in place."
+    echo "This upgrades ${MODULE_ID} to Dependency-Track v5 and rewrites its database"
+    echo "in place. Projects, components, findings, audit history, policies, users,"
+    echo "teams, permissions and API keys are all carried over."
     echo
-    echo "Every backup snapshot taken before now holds a Dependency-Track v4 database."
-    echo "Once this is done, none of them can be restored into this module any more."
-    echo "Run a backup first if the last one is not recent enough. On the leader node:"
+    echo "What v5 cannot carry over, because it cannot decrypt what v4 encrypted:"
+    echo "  - the API tokens of OSS Index, GitHub Advisories, Snyk and VulnDB"
+    echo "    (every other setting of theirs is kept, only the token has to be typed again)"
+    echo "  - repository passwords, and their repository comes back disabled"
+    echo "  - integration keys: Fortify SSC, DefectDojo, Kenna"
+    echo "  - notification rules, which come back disabled"
+    echo "  - the SMTP password, if one was set"
+    echo "Trivy is the exception: this module owns its token and puts it back."
+    echo
+    echo "Going back means restoring a backup snapshot taken before now, which brings"
+    echo "the instance back as it is today, on v4. Take one if the last is not recent:"
     echo
     echo "    api-cli run list-backups | jq '.backups[]'"
     echo "    api-cli run run-backup --data '{\"id\": <backup id>}'"
@@ -672,14 +682,15 @@ print(json.dumps({"config": config}))')
     echo "${SD_WARN}  - re-enter the integration keys"
     echo "${SD_WARN}  - re-enable the notification rules, they came back disabled"
     echo
-    echo "${SD_WARN}Run a backup of ${MODULE_ID} now. Every snapshot taken before this upgrade"
-    echo "${SD_WARN}holds a v4 database, which this version refuses to restore. On the leader node:"
-    echo "${SD_WARN}    api-cli run run-backup --data '{\"id\": <backup id>}'"
+    echo "Worth a backup once you are happy with the result: the snapshots you already"
+    echo "have restore the instance as it was on v4, not as it is now. On the leader node:"
+    echo "    api-cli run run-backup --data '{\"id\": <backup id>}'"
     echo
     local dump_size
     dump_size=$(du -sh "${BACKUP_DIR}" 2>/dev/null | cut -f1)
     echo "The v4 database is kept at state/${V4_DUMP}${dump_size:+ (${dump_size})}."
-    echo "It is the only way back, and module backups do not include it. Remove it once you"
+    echo "It is a faster way back than a restore, and module backups do not include it."
+    echo "Remove it once you"
     echo "have checked the instance and taken a backup of it:"
     echo "    runagent -m ${MODULE_ID} rm -rf ${BACKUP_DIR}"
 }

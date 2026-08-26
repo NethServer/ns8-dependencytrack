@@ -71,11 +71,12 @@ rewrites the module database. On the leader node:
     api-cli run list-backups | jq '.backups[]'
     api-cli run run-backup --data '{"id": <backup id>}'
 
-The script stops and asks you to type `I have a backup` before it touches anything. Run
+The script stops before it touches anything: it lists what v5 cannot carry over, so you decide
+knowing what you will have to type back in, then asks you to type `I have a backup`. Use
 `--yes` instead only from a script, where there is no terminal to ask on.
 
-Run another backup as soon as the upgrade is over: every snapshot taken before it holds a v4
-database, and 2.0.0 refuses to restore one.
+Going back means restoring a snapshot taken before the upgrade, which brings the instance back
+as it was, on v4.
 
 ### 1. Find the node hosting the instance
 
@@ -138,13 +139,13 @@ is the only way back if the upgrade turns out wrong. It is not included in modul
 it sits on the node's disk and nowhere else — several gigabytes on a real portfolio.
 
 Do not delete it on the same day. First check in the interface that projects, findings, audit
-history, teams and API keys are all there, then run a backup, because every snapshot older
-than the upgrade holds a v4 database this version refuses to restore:
+history, teams and API keys are all there. Then run a backup, so that a snapshot of the
+instance as it is now exists — the ones you already have restore it as it was, on v4:
 
     api-cli run run-backup --data '{"id": <backup id>}'
 
-Once that backup has succeeded, the v4 dump has no reader left. On the node hosting the
-instance:
+Once that backup has succeeded, the v4 dump is no longer the only quick way back. On the node
+hosting the instance:
 
     runagent -m dependencytrack1 du -sh backup-v4
     runagent -m dependencytrack1 rm -rf backup-v4

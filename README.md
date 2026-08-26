@@ -131,6 +131,27 @@ by hand.
 Portfolio metrics older than 90 days are not carried over. Findings, audit history, policies
 and everything else are.
 
+### 6. Once satisfied, take a backup and reclaim the disk
+
+Phase 1 keeps the v4 database at `state/backup-v4/dependencytrack-v4.pg_dump` on purpose: it
+is the only way back if the upgrade turns out wrong. It is not included in module backups, so
+it sits on the node's disk and nowhere else — several gigabytes on a real portfolio.
+
+Do not delete it on the same day. First check in the interface that projects, findings, audit
+history, teams and API keys are all there, then run a backup, because every snapshot older
+than the upgrade holds a v4 database this version refuses to restore:
+
+    api-cli run run-backup --data '{"id": <backup id>}'
+
+Once that backup has succeeded, the v4 dump has no reader left. On the node hosting the
+instance:
+
+    runagent -m dependencytrack1 du -sh backup-v4
+    runagent -m dependencytrack1 rm -rf backup-v4
+
+The copy of the script under `state/upgrade2V5.sh` and the leftovers in `state/migrate-v5/`
+can go at the same time.
+
 ### What v5 cannot carry over
 
 v5 cannot decrypt what v4 encrypted, so the migrator clears every secret. Repository

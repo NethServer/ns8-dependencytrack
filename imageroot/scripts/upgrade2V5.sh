@@ -680,7 +680,12 @@ print(json.dumps({"config": config}))')
     echo "${SD_WARN}holds a v4 database, which this version refuses to restore. On the leader node:"
     echo "${SD_WARN}    api-cli run run-backup --data '{\"id\": <backup id>}'"
     echo
-    echo "state/${V4_DUMP} is kept. Remove it once the instance is proven."
+    local dump_size
+    dump_size=$(du -sh "${BACKUP_DIR}" 2>/dev/null | cut -f1)
+    echo "The v4 database is kept at state/${V4_DUMP}${dump_size:+ (${dump_size})}."
+    echo "It is the only way back, and module backups do not include it. Remove it once you"
+    echo "have checked the instance and taken a backup of it:"
+    echo "    runagent -m ${MODULE_ID} rm -rf ${BACKUP_DIR}"
 }
 
 ##

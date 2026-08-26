@@ -40,7 +40,7 @@ cd "${AGENT_STATE_DIR}"
 # Not in org.nethserver.images, so no *_IMAGE variable holds it. Bumped by hand,
 # and never past the apiserver 2.0.0 ships: it writes a Flyway head, which an
 # older apiserver would refuse. Behind is safe, Flyway catches up on first boot.
-V4_MIGRATOR_IMAGE="${V4_MIGRATOR_IMAGE:-ghcr.io/dependencytrack/v4-migrator:5.0.4}"
+V4_MIGRATOR_IMAGE="${V4_MIGRATOR_IMAGE:-ghcr.io/dependencytrack/v4-migrator:5.0.5}"
 
 SRC_CTR="dt_migrate_src"
 DST_CTR="dt_migrate_dst"
@@ -409,10 +409,11 @@ phase_migrate() {
     run_postgres "${DST_CTR}" "${DST_VOL}" \
         -c max_wal_size=4GB -c max_locks_per_transaction=256
 
-    # `run` gates the migration. `verify` is advisory upstream, kept for the row
-    # count table it logs, and only after the load: before it, every count hits a
-    # staging table nothing has created and raises a PostgreSQL error.
+    # Upstream's sequence. The preflight verify logs a PostgreSQL error per
+    # staging table nothing has created yet: that is how it reports zero, not a
+    # failure. `run` is what gates the migration, verify is advisory either side.
     run_migrator bootstrap
+    run_migrator verify
     run_migrator run \
         --source-url "${JDBC_SRC}" --source-user postgres --source-pass "${POSTGRES_TOKEN}" \
         --metrics-retention-days "${METRICS_RETENTION_DAYS}"

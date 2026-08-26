@@ -3,6 +3,19 @@
   "extends": [
     "local>NethServer/.github:ns8-automerge"
   ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Follow the v4-migrator tag pinned in the upgrade script",
+      "managerFilePatterns": [
+        "imageroot/scripts/upgrade2V5.sh"
+      ],
+      "matchStrings": [
+        "V4_MIGRATOR_IMAGE:-(?<depName>[^:\\s]+):(?<currentValue>[^}\"\\s]+)"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
   "packageRules": [
     {
       "matchDatasources": ["docker"],
@@ -11,6 +24,12 @@
         "dependencytrack/frontend"
       ],
       "allowedVersions": "<5"
+    },
+    {
+      "description": "The migrator writes the schema 2.0.0 expects, so it must not go past v5",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/dependencytrack/v4-migrator"],
+      "allowedVersions": "<6"
     },
     {
       "matchDatasources": ["docker"],

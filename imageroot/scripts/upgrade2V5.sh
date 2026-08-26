@@ -6,26 +6,18 @@
 #
 
 #
-# Upgrade this instance from Dependency-Track v4 to v5.
-#
-# v5 is not an in-place upgrade of v4: the schemas are incompatible and a v5
-# apiserver must never boot against a v4 database. The official v4-migrator
-# copies the data offline into a fresh v5 database:
+# Upgrade this instance from Dependency-Track v4 to v5, with the official
+# v4-migrator:
 #   https://dependencytrack.github.io/docs/next/guides/administration/migrating-from-v4/
 #
-# This script ships with the v4 module and is gone from 2.0.0. Run it as the
-# module user, on the node hosting the instance -- which is not necessarily the
-# leader:
+# Two phases, around an update to 2.0.0 run from the leader:
 #
 #   runagent -m dependencytrack1 bash ../scripts/upgrade2V5.sh
-#
-# It stops there, with the services down, and prints the update-module command
-# to run from the leader. Updating to 2.0.0 deletes this file, so phase 1 keeps
-# a copy of it under state/ for the second phase:
-#
 #   runagent -m dependencytrack1 bash upgrade2V5.sh analyzers
 #
-# On failure both dumps stay on disk and the run is resumable.
+# Phase 1 leaves the services down and keeps a copy of itself under state/,
+# because the update deletes this file. On failure both dumps stay on disk and
+# the run is resumable.
 #
 
 set -E -e -o pipefail
@@ -40,16 +32,13 @@ if [[ -z "${AGENT_STATE_DIR:-}" || -z "${MODULE_ID:-}" ]]; then
     exit 2
 fi
 
-# Resolved before the cd below, because it is usually a relative path.
+# Resolved before the cd: it is usually a relative path.
 SELF=$(readlink -f "$0")
 
-# Callers run from different directories.
 cd "${AGENT_STATE_DIR}"
 
-# The v4 module never runs the migrator, so its image is not in
-# org.nethserver.images and no *_IMAGE variable holds it. The migrator only has
-# to read the v4 schema and write the v5 one: a later apiserver upgrades what it
-# produced through Flyway on its first boot.
+# Not in org.nethserver.images, so no *_IMAGE variable holds it. Its version
+# need not match the apiserver: Flyway upgrades what it produced on first boot.
 V4_MIGRATOR_IMAGE="${V4_MIGRATOR_IMAGE:-ghcr.io/dependencytrack/v4-migrator:5.0.4}"
 
 SRC_CTR="dt_migrate_src"
@@ -63,18 +52,17 @@ UNITS=(dependencytrack.service postgresql-app.service dependencytrack-apiserver.
        dependencytrack-frontend.service dependencytrack-nginx.service trivy-app.service)
 TRIVY_URL="http://127.0.0.1:8282"
 SECRET_NAME="trivy-api-token"
-# Not state/restore/: postgresql-app.service mounts it as
-# /docker-entrypoint-initdb.d/, where a leftover restore script would run.
+# Not state/restore/: postgresql-app.service mounts that as
+# /docker-entrypoint-initdb.d/ and would run whatever is left in it.
 WORK_DIR="migrate-v5"
 V4_DUMP="${BACKUP_DIR}/${DB}-v4.pg_dump"
 V5_DUMP="${WORK_DIR}/${DB}.pg_dump"
 ANALYZERS_ENV="${WORK_DIR}/analyzers.env"
 SELF_COPY="upgrade2V5.sh"
-# Present means a previous run died while replacing postgres-data, so the next
-# run must resume instead of inspecting a volume that is empty at that point.
+# Set while postgres-data is being replaced: the next run must resume rather
+# than inspect a volume that is empty at that point.
 SWAP_FLAG="${WORK_DIR}/.swap-in-progress"
-# Mandatory flag of `run`. Portfolio metrics older than this are not copied over;
-# findings, audit history and everything else are unaffected.
+# Mandatory flag of `run`. Only portfolio metrics older than this are dropped.
 METRICS_RETENTION_DAYS=90
 
 fail() {
@@ -130,10 +118,11 @@ run_migrator() {
         --target-url "${JDBC_DST}" --target-user postgres --target-pass "${POSTGRES_TOKEN}"
 }
 
-# v5 cannot be given an API key, and the analyzer phase needs one. Format and
-# hashing come from Alpine's ApiKeyGenerator.
-# Called in an `if !` condition, which turns errexit off for the whole body, so
-# every step has to report its own failure.
+# v5 accepts no API key from its environment, so it goes in through SQL. Format
+# and hashing come from Alpine's ApiKeyGenerator.
+#
+# Called in an `if !`, which turns errexit off for the whole body: every step
+# reports its own failure.
 create_api_key() {
     local pub sec hash
     read -r pub sec hash < <(python3 - <<'EOS'
@@ -214,11 +203,8 @@ EOS
     rm -f "${SWAP_FLAG}" "${V5_DUMP}" "${WORK_DIR}/${DB}_restore.sh"
 }
 
-# This is a one way door: the database is rewritten in place, and every snapshot
-# of this instance becomes one this module refuses to restore. Worth a stop.
-#
-# Only asked on a terminal. A non-interactive caller must say so with --yes
-# rather than have the script hang on a read nobody sees.
+# Only asked on a terminal: a non-interactive caller says so with --yes rather
+# than hang on a read nobody sees.
 confirm_backup() {
     echo
     echo "This upgrades ${MODULE_ID} to Dependency-Track v5 and rewrites its database"
@@ -259,9 +245,8 @@ confirm_backup() {
     echo
 }
 
-# Keeps dependencytrack-setup.service of 2.0.0 from configuring Trivy on its own
-# defaults before the analyzer phase replays the v4 ones. Both exits of phase 1
-# need it, the resume path included.
+# Keeps dependencytrack-setup.service of 2.0.0 out of the way until phase 2 has
+# replayed the v4 settings. Both exits of phase 1 need it.
 mark_pending() {
     python3 -c 'import agent; agent.set_env("DT_TRIVY_SETUP", "pending-migration")'
 }
@@ -287,7 +272,7 @@ next_step() {
 ## Phase 1: migrate the database, offline, with the module still on v4
 ##
 
-# Not local to phase_migrate: the EXIT trap fires once that function has returned.
+# Not local: the EXIT trap fires once phase_migrate has returned.
 completed=""
 
 phase_migrate() {
@@ -314,22 +299,18 @@ phase_migrate() {
     confirm_backup
     mkdir -p "${WORK_DIR}"
 
-    # Updating to 2.0.0 removes every file the new image does not ship, this one
-    # included, so phase 2 has to run from a copy under state/.
+    # The update removes every file 2.0.0 does not ship, this one included.
     if [[ "${SELF}" != "$(readlink -f "${SELF_COPY}")" ]]; then
         cp -f "${SELF}" "${SELF_COPY}"
     fi
 
-    # Stopped and disabled: a reboot must not start a v4 apiserver on a migrated
-    # database. Every unit has to be disabled, not just the pod: the others are
-    # WantedBy=default.target too, and their BindsTo would drag the pod back up.
+    # Every unit, not just the pod: the others are WantedBy=default.target too,
+    # and their BindsTo would drag the pod back up after a reboot.
     systemctl --user disable "${UNITS[@]}" >/dev/null 2>&1 || true
-    # Every unit by name rather than the pod alone: not relying on BindsTo to
-    # tear the containers down before postgres-data is reopened below.
+    # By name rather than through BindsTo, postgres-data is reopened below.
     systemctl --user stop "${UNITS[@]}"
 
-    # postgres-data is empty or half loaded here: inspecting it would conclude
-    # "fresh install" and replace a database that is already migrated.
+    # postgres-data is empty or half loaded here, so it cannot be inspected.
     if [[ -f "${SWAP_FLAG}" ]]; then
         if [[ ! -f "${V5_DUMP}" ]]; then
             fail "A previous run was interrupted while replacing the database, but" \
@@ -356,7 +337,7 @@ phase_migrate() {
     fi
 
     table_count=$(src_query "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
-    # An empty string compares equal to 0 with -eq, and would read as a fresh install.
+    # An empty string equals 0 with -eq, and would read as a fresh install.
     if [[ ! "${table_count}" =~ ^[0-9]+$ ]]; then
         fail "Could not count the tables of the ${DB} database, got '${table_count}'."
     fi
@@ -372,10 +353,8 @@ phase_migrate() {
 
     echo "Dependency-Track v4 schema detected, starting the upgrade to v5."
 
-    # v5 turned the analyzers into plugins whose runtime config the migrator does
-    # not populate, so every switch below has to be carried over by hand. Read
-    # them before the migrator drops them. Defaults are v4's, not v5's: scanOs
-    # and ossindex are on in v4 and off in v5.
+    # The migrator leaves the v5 plugin configs empty, so read the v4 settings
+    # before it drops them. The defaults below are v4's, not v5's.
     read_v4_property() {
         local value
         value=$(src_query "SELECT \"PROPERTYVALUE\" FROM \"CONFIGPROPERTY\"
@@ -383,11 +362,8 @@ phase_migrate() {
         echo "${value:-$3}"
     }
 
-    # An unreadable property must stop the run: recording the v4 default as if
-    # it were the admin's setting would push a wrong value into v5.
-    # Appends on its own rather than under a `{ ... } >file` block: such a block
-    # would capture the message of fail(), and the whole EXIT trap, into the file
-    # and leave the journal empty.
+    # Appends on its own: under a `{ ... } >file` block the message of fail(),
+    # and the whole EXIT trap, would land in the file instead of the journal.
     save_v4_property() {
         local value
         value=$(read_v4_property "$2" "$3" "$4") ||
@@ -428,20 +404,13 @@ phase_migrate() {
     podman exec "${SRC_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V4_DUMP}"
     echo "v4 backup written to state/${V4_DUMP}"
 
-    # Both are raised on the migrator preflight's request: the load writes in bulk
-    # and attaching the metrics partitions takes many locks in one transaction.
+    # Both raised on the migrator preflight's request.
     run_postgres "${DST_CTR}" "${DST_VOL}" \
         -c max_wal_size=4GB -c max_locks_per_transaction=256
 
-    # `run` is what gates the migration: it exits non-zero on failure and errexit
-    # stops us here. Upstream calls `verify` "advisory post-load checks", so its
-    # exit code proves nothing -- it is kept for the row count table it writes to
-    # the journal, source against staging against v5.
-    #
-    # Only after `run`. Called before it, verify queries staging tables that
-    # nothing has created yet, so every count raises a PostgreSQL error and the
-    # journal fills with forty "relation does not exist" lines that look like a
-    # failed migration and are not one.
+    # `run` gates the migration. `verify` is advisory upstream, kept for the row
+    # count table it logs, and only after the load: before it, every count hits a
+    # staging table nothing has created and raises a PostgreSQL error.
     run_migrator bootstrap
     run_migrator run \
         --source-url "${JDBC_SRC}" --source-user postgres --source-pass "${POSTGRES_TOKEN}" \
@@ -457,11 +426,6 @@ phase_migrate() {
     podman exec "${DST_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V5_DUMP}"
     podman rm --ignore -f "${SRC_CTR}" "${DST_CTR}" >/dev/null
 
-    # The v5 images are deliberately not pre-pulled here. The instance is down
-    # from the start of this phase until the end of the analyzer phase, so
-    # fetching them early moves the download inside the same outage rather than
-    # shortening it, while pinning a tag in a released v4 script that can only
-    # drift from what 2.0.0 actually ships. update-module pulls the right ones.
     swap_in_migrated_database
 
     mark_pending
@@ -478,9 +442,8 @@ phase_analyzers() {
         fail "state/${ANALYZERS_ENV} is missing: run the migration phase first."
     fi
 
-    # Shipped by 2.0.0 only. Run out of order this phase would start a v4
-    # apiserver against the migrated v5 database, the one thing phase 1 exists
-    # to prevent.
+    # Shipped by 2.0.0 only. Out of order, this phase would start a v4 apiserver
+    # against the migrated database.
     if [[ ! -f "${AGENT_INSTALL_DIR}/systemd/user/dependencytrack-setup.service" ]]; then
         fail "This instance is not on 2.0.0 yet. Update it first, then run this phase:" \
              "see the command printed at the end of the migration phase."
@@ -495,10 +458,8 @@ phase_analyzers() {
     . "./${ANALYZERS_ENV}"
     set +a
 
-    # v4 stores these with a trailing slash and copes with it; v5 concatenates
-    # and produces a double slash. On OSV that is fatal: the ecosystem archive
-    # at .../osv-vulnerabilities.storage.googleapis.com//Maven/all.zip answers
-    # 404, the mirror retries six times and gives up terminally.
+    # v4 stores these with a trailing slash and copes; v5 concatenates. On OSV
+    # the double slash makes the ecosystem archive answer 404.
     DT_OSV_URL="${DT_OSV_URL%/}"
     DT_NVD_FEEDS_URL="${DT_NVD_FEEDS_URL%/}"
     DT_OSSINDEX_URL="${DT_OSSINDEX_URL%/}"
@@ -508,8 +469,7 @@ phase_analyzers() {
     systemctl --user enable "${UNITS[@]}" dependencytrack-setup.service
     systemctl --user start dependencytrack.service
 
-    # Bringing the instance back up matters more than the analyzers, so this is
-    # checked once the services are running, not before.
+    # After the services are up: bringing the instance back matters more.
     if [[ -z "${api_key}" ]]; then
         python3 -c 'import agent; agent.set_env("DT_TRIVY_SETUP", "")'
         fail "No DT_API_KEY in secrets.env. The instance is up and its data is migrated," \
@@ -517,8 +477,7 @@ phase_analyzers() {
     fi
 
     local api="http://127.0.0.1:${TCP_PORT}/api"
-    # The apiserver runs its init tasks before serving, and the first v5 boot
-    # spends minutes in Flyway.
+    # The first v5 boot spends minutes in Flyway before serving.
     local ready=""
     for _ in $(seq 1 120); do
         if curl -sf -o /dev/null "${api}/version"; then
@@ -540,8 +499,7 @@ phase_analyzers() {
             -d "${body}" || true
     }
 
-    # 304 means what we sent is already stored, which happens whenever a v4
-    # setting matches the v5 default.
+    # 304: what we sent is already stored, a v4 setting matching the v5 default.
     failed=""
     put_extension_config() {
         local point="$1" extension="$2" body="$3" code
@@ -555,17 +513,16 @@ phase_analyzers() {
     }
 
     local trivy_state=none
-    # v4 stores whatever was typed, so compare without a trailing slash: the
-    # module's own Trivy is the one analyzer whose token can be recovered.
+    # Compared without its trailing slash: v4 stores whatever was typed.
     local v4_trivy_url="${DT_TRIVY_URL%/}"
     if [[ -n "${v4_trivy_url}" && "${v4_trivy_url}" != "${TRIVY_URL}" ]]; then
-        # Their token is encrypted and gone, so another server means hands off.
+        # Its token is gone, and only the module's own Trivy can be rebuilt.
         echo "${SD_WARN}Trivy was pointed at ${v4_trivy_url}, not at the server this module runs."
         echo "${SD_WARN}Leaving the analyzer alone: its token cannot be recovered from v4."
     elif [[ -z "${trivy_token}" ]]; then
         echo "${SD_WARN}No Trivy token in secrets.env, leaving the analyzer alone."
     else
-        # 409 means the secret survived from an earlier run, which is just as good.
+        # 409: the secret survived an earlier run.
         local secret_body code
         secret_body=$(N="${SECRET_NAME}" V="${trivy_token}" python3 -c \
             'import json,os;print(json.dumps({"name":os.environ["N"],"value":os.environ["V"]}))')
@@ -589,7 +546,7 @@ print(json.dumps({"config": {
     "ignoreUnfixed": flag("I"),
 }}))')
             if put_extension_config vuln-analyzer trivy "${body}"; then
-                # "prepared": secret and URL in place, but v4 had it off so it stays off.
+                # prepared: URL and token in place, but v4 had it off.
                 if [[ "${DT_TRIVY_ENABLED}" == "true" ]]; then
                     trivy_state=enabled
                 else
@@ -608,8 +565,8 @@ print(json.dumps({"config": {
         'import json,os;print(json.dumps({"config":{"enabled":os.environ["E"].strip().lower()=="true","cveFeedsUrl":os.environ["U"]}}))')
     put_extension_config vuln-data-source nvd "${body}" || true
 
-    # v4 stored the OSV ecosystems as a semicolon separated list, empty meaning off.
-    # v5 keeps them in an array and refuses an empty one while enabled.
+    # v4: semicolon separated, empty meaning off. v5: an array it refuses empty
+    # while enabled.
     body=$(L="${DT_OSV_ECOSYSTEMS}" U="${DT_OSV_URL}" A="${DT_OSV_ALIAS_SYNC}" python3 -c '
 import json, os
 ecosystems = [e.strip() for e in os.environ["L"].split(";") if e.strip()]

@@ -65,7 +65,14 @@ This release ships `imageroot/scripts/upgrade2V5.sh`, which drives the official
 offline. Projects, components, vulnerabilities, findings, policies, users, teams, permissions
 and API keys are preserved.
 
-Take a backup of the instance first. The whole procedure takes the application down.
+Take a backup of the instance first — the whole procedure takes the application down, and it
+rewrites the module database. On the leader node:
+
+    api-cli run list-backups | jq '.backups[]'
+    api-cli run run-backup --data '{"id": <backup id>}'
+
+Run another one as soon as the upgrade is over: every snapshot taken before it holds a v4
+database, and 2.0.0 refuses to restore one.
 
 ### 1. Find the node hosting the instance
 

@@ -243,6 +243,13 @@ phase_migrate() {
     }
     trap on_exit EXIT
 
+    echo
+    echo "${SD_WARN}This rewrites the module database. Make sure a backup of ${MODULE_ID} ran"
+    echo "${SD_WARN}recently, and run one now if it did not. On the leader node:"
+    echo "${SD_WARN}    api-cli run list-backups | jq '.backups[]'"
+    echo "${SD_WARN}    api-cli run run-backup --data '{\"id\": <backup id>}'"
+    echo
+
     mkdir -p "${WORK_DIR}"
 
     # Updating to 2.0.0 removes every file the new image does not ship, this one
@@ -567,6 +574,10 @@ print(json.dumps({"config": config}))')
     echo "${SD_WARN}  - re-enter the repository passwords, their repository is disabled"
     echo "${SD_WARN}  - re-enter the integration keys"
     echo "${SD_WARN}  - re-enable the notification rules, they came back disabled"
+    echo
+    echo "${SD_WARN}Run a backup of ${MODULE_ID} now. Every snapshot taken before this upgrade"
+    echo "${SD_WARN}holds a v4 database, which this version refuses to restore. On the leader node:"
+    echo "${SD_WARN}    api-cli run run-backup --data '{\"id\": <backup id>}'"
     echo
     echo "state/${V4_DUMP} is kept. Remove it once the instance is proven."
 }

@@ -210,6 +210,41 @@ EOS
     rm -f "${SWAP_FLAG}" "${V5_DUMP}" "${WORK_DIR}/${DB}_restore.sh"
 }
 
+# This is a one way door: the database is rewritten in place, and every snapshot
+# of this instance becomes one this module refuses to restore. Worth a stop.
+#
+# Only asked on a terminal. A non-interactive caller must say so with --yes
+# rather than have the script hang on a read nobody sees.
+confirm_backup() {
+    echo
+    echo "This rewrites the ${MODULE_ID} database in place."
+    echo
+    echo "Every backup snapshot taken before now holds a Dependency-Track v4 database."
+    echo "Once this is done, none of them can be restored into this module any more."
+    echo "Run a backup first if the last one is not recent enough. On the leader node:"
+    echo
+    echo "    api-cli run list-backups | jq '.backups[]'"
+    echo "    api-cli run run-backup --data '{\"id\": <backup id>}'"
+    echo
+
+    if [[ -n "${assume_yes}" ]]; then
+        echo "Proceeding: --yes was given."
+        return 0
+    fi
+
+    if [[ ! -t 0 ]]; then
+        fail "Not running on a terminal, so the confirmation cannot be asked." \
+             "Re-run it from a shell on this node, or pass --yes if you have a backup."
+    fi
+
+    local answer=""
+    read -r -p "Type 'I have a backup' to continue: " answer
+    if [[ "${answer}" != "I have a backup" ]]; then
+        fail "Not confirmed, nothing was changed."
+    fi
+    echo
+}
+
 # Keeps dependencytrack-setup.service of 2.0.0 from configuring Trivy on its own
 # defaults before the analyzer phase replays the v4 ones. Both exits of phase 1
 # need it, the resume path included.
@@ -262,13 +297,7 @@ phase_migrate() {
     }
     trap on_exit EXIT
 
-    echo
-    echo "${SD_WARN}This rewrites the module database. Make sure a backup of ${MODULE_ID} ran"
-    echo "${SD_WARN}recently, and run one now if it did not. On the leader node:"
-    echo "${SD_WARN}    api-cli run list-backups | jq '.backups[]'"
-    echo "${SD_WARN}    api-cli run run-backup --data '{\"id\": <backup id>}'"
-    echo
-
+    confirm_backup
     mkdir -p "${WORK_DIR}"
 
     # Updating to 2.0.0 removes every file the new image does not ship, this one
@@ -658,8 +687,17 @@ fi
 JDBC_SRC="jdbc:postgresql://${SRC_CTR}:5432/${DB}"
 JDBC_DST="jdbc:postgresql://${DST_CTR}:5432/${DB}"
 
-case "${1:-migrate}" in
+assume_yes=""
+phase="migrate"
+for arg in "$@"; do
+    case "${arg}" in
+        --yes) assume_yes=1 ;;
+        migrate | analyzers) phase="${arg}" ;;
+        *) fail "Usage: $0 [migrate|analyzers] [--yes]" ;;
+    esac
+done
+
+case "${phase}" in
     migrate) phase_migrate ;;
     analyzers) phase_analyzers ;;
-    *) fail "Usage: $0 [migrate|analyzers]" ;;
 esac

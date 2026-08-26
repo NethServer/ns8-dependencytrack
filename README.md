@@ -71,7 +71,10 @@ rewrites the module database. On the leader node:
     api-cli run list-backups | jq '.backups[]'
     api-cli run run-backup --data '{"id": <backup id>}'
 
-Run another one as soon as the upgrade is over: every snapshot taken before it holds a v4
+The script stops and asks you to type `I have a backup` before it touches anything. Run
+`--yes` instead only from a script, where there is no terminal to ask on.
+
+Run another backup as soon as the upgrade is over: every snapshot taken before it holds a v4
 database, and 2.0.0 refuses to restore one.
 
 ### 1. Find the node hosting the instance

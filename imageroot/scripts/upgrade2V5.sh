@@ -390,6 +390,9 @@ phase_migrate() {
     run_postgres "${DST_CTR}" "${DST_VOL}" \
         -c max_wal_size=4GB -c max_locks_per_transaction=256
 
+    # `run` is what gates the migration: it exits non-zero on failure and errexit
+    # stops us here. Upstream calls `verify` "advisory post-load checks", so its
+    # exit code proves nothing -- it is kept for what it writes to the journal.
     run_migrator bootstrap
     run_migrator verify
     run_migrator run \

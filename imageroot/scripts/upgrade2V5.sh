@@ -23,7 +23,7 @@
 # to run from the leader. Updating to 2.0.0 deletes this file, so phase 1 keeps
 # a copy of it under state/ for the second phase:
 #
-#   runagent -m dependencytrack1 bash migrate-v5/upgrade2V5.sh analyzers
+#   runagent -m dependencytrack1 bash upgrade2V5.sh analyzers
 #
 # On failure both dumps stay on disk and the run is resumable.
 #
@@ -63,6 +63,8 @@ NET="dt_migrate_net"
 DST_VOL="postgres-migrate-v5"
 DB="dependencytrack"
 BACKUP_DIR="backup-v4"
+UNITS=(dependencytrack.service postgresql-app.service dependencytrack-apiserver.service
+       dependencytrack-frontend.service dependencytrack-nginx.service trivy-app.service)
 TRIVY_URL="http://127.0.0.1:8282"
 SECRET_NAME="trivy-api-token"
 # Not state/restore/: postgresql-app.service mounts it as
@@ -71,7 +73,7 @@ WORK_DIR="migrate-v5"
 V4_DUMP="${BACKUP_DIR}/${DB}-v4.pg_dump"
 V5_DUMP="${WORK_DIR}/${DB}.pg_dump"
 ANALYZERS_ENV="${WORK_DIR}/analyzers.env"
-SELF_COPY="${WORK_DIR}/upgrade2V5.sh"
+SELF_COPY="upgrade2V5.sh"
 # Present means a previous run died while replacing postgres-data, so the next
 # run must resume instead of inspecting a volume that is empty at that point.
 SWAP_FLAG="${WORK_DIR}/.swap-in-progress"
@@ -133,6 +135,8 @@ run_migrator() {
 
 # v5 cannot be given an API key, and the analyzer phase needs one. Format and
 # hashing come from Alpine's ApiKeyGenerator.
+# Called in an `if !` condition, which turns errexit off for the whole body, so
+# every step has to report its own failure.
 create_api_key() {
     local pub sec hash
     read -r pub sec hash < <(python3 - <<'EOS'
@@ -142,9 +146,10 @@ pub = "".join(secrets.choice(alphabet) for _ in range(8))
 sec = "".join(secrets.choice(alphabet) for _ in range(32))
 print(pub, sec, hashlib.sha3_256(sec.encode()).hexdigest())
 EOS
-    )
+    ) || return 1
+    [[ -n "${pub}" && -n "${sec}" && -n "${hash}" ]] || return 1
 
-    podman exec -i "${DST_CTR}" psql -U postgres -d "${DB}" -v ON_ERROR_STOP=1 -q <<EOS
+    podman exec -i "${DST_CTR}" psql -U postgres -d "${DB}" -v ON_ERROR_STOP=1 -q <<EOS || return 1
 DO \$\$
 DECLARE team_id bigint; key_id bigint;
 BEGIN
@@ -161,7 +166,7 @@ END
 \$\$;
 EOS
 
-    DT_API_KEY="odt_${pub}_${sec}" python3 - <<'EOS'
+    DT_API_KEY="odt_${pub}_${sec}" python3 - <<'EOS' || return 1
 import os, agent
 env = agent.read_envfile("secrets.env")
 env["DT_API_KEY"] = os.environ["DT_API_KEY"]
@@ -258,9 +263,10 @@ phase_migrate() {
         cp -f "${SELF}" "${SELF_COPY}"
     fi
 
-    # Stopped and disabled: a reboot must not start a v4 apiserver on a
-    # migrated database.
-    systemctl --user disable dependencytrack.service >/dev/null 2>&1 || true
+    # Stopped and disabled: a reboot must not start a v4 apiserver on a migrated
+    # database. Every unit has to be disabled, not just the pod: the others are
+    # WantedBy=default.target too, and their BindsTo would drag the pod back up.
+    systemctl --user disable "${UNITS[@]}" >/dev/null 2>&1 || true
     if systemctl --user --quiet is-active dependencytrack.service; then
         systemctl --user stop dependencytrack.service
     fi
@@ -315,12 +321,17 @@ phase_migrate() {
     read_v4_property() {
         local value
         value=$(src_query "SELECT \"PROPERTYVALUE\" FROM \"CONFIGPROPERTY\"
-                            WHERE \"GROUPNAME\" = '$1' AND \"PROPERTYNAME\" = '$2'")
+                            WHERE \"GROUPNAME\" = '$1' AND \"PROPERTYNAME\" = '$2'") || return 1
         echo "${value:-$3}"
     }
 
+    # An unreadable property must stop the run: recording the v4 default as if
+    # it were the admin's setting would push a wrong value into v5.
     save_v4_property() {
-        printf '%s=%q\n' "$1" "$(read_v4_property "$2" "$3" "$4")"
+        local value
+        value=$(read_v4_property "$2" "$3" "$4") ||
+            fail "Could not read the v4 setting $2/$3 from the database."
+        printf '%s=%q\n' "$1" "${value}"
     }
 
     {
@@ -411,19 +422,26 @@ phase_analyzers() {
     . "./${ANALYZERS_ENV}"
     set +a
 
-    systemctl --user enable dependencytrack.service
+    systemctl --user enable "${UNITS[@]}"
     # Shipped by 2.0.0 only, and it stands down while DT_TRIVY_SETUP is set.
     systemctl --user enable dependencytrack-setup.service 2>/dev/null || true
     systemctl --user start dependencytrack.service
 
     local api="http://127.0.0.1:${TCP_PORT}/api"
-    # The apiserver runs its init tasks before serving, which takes a while.
+    # The apiserver runs its init tasks before serving, and the first v5 boot
+    # spends minutes in Flyway.
+    local ready=""
     for _ in $(seq 1 120); do
         if curl -sf -o /dev/null "${api}/version"; then
+            ready=1
             break
         fi
         sleep 5
     done
+    if [[ -z "${ready}" ]]; then
+        fail "The apiserver did not answer within 10 minutes. Check its journal, then run" \
+             "this phase again: it is safe to repeat."
+    fi
 
     call() {
         local method="$1" path="$2" body="$3"

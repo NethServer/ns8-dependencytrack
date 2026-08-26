@@ -100,8 +100,8 @@ On the node hosting the instance:
 The script stops and disables the pod, dumps the v4 database to
 `state/backup-v4/dependencytrack-v4.pg_dump` and keeps it, saves the v4 analyzer settings
 before the migrator wipes them, copies the data into a fresh v5 database and replaces
-`postgres-data` with it. It also keeps a copy of itself under `state/migrate-v5/`, because
-the next step deletes the original.
+`postgres-data` with it. It also keeps a copy of itself as `state/upgrade2V5.sh`, because the
+next step deletes the original.
 
 Services are left down on purpose, and disabled so a reboot cannot start a v4 API server
 against the migrated database.
@@ -119,7 +119,7 @@ Center still offers nothing.
 
 On the node hosting the instance, from the copy phase 1 left behind:
 
-    runagent -m dependencytrack1 bash migrate-v5/upgrade2V5.sh analyzers
+    runagent -m dependencytrack1 bash upgrade2V5.sh analyzers
 
 This enables and starts the services, replays the v4 analyzer settings against the v5 API,
 then prints what is left to do by hand.

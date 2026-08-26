@@ -392,9 +392,14 @@ phase_migrate() {
 
     # `run` is what gates the migration: it exits non-zero on failure and errexit
     # stops us here. Upstream calls `verify` "advisory post-load checks", so its
-    # exit code proves nothing -- it is kept for what it writes to the journal.
+    # exit code proves nothing -- it is kept for the row count table it writes to
+    # the journal, source against staging against v5.
+    #
+    # Only after `run`. Called before it, verify queries staging tables that
+    # nothing has created yet, so every count raises a PostgreSQL error and the
+    # journal fills with forty "relation does not exist" lines that look like a
+    # failed migration and are not one.
     run_migrator bootstrap
-    run_migrator verify
     run_migrator run \
         --source-url "${JDBC_SRC}" --source-user postgres --source-pass "${POSTGRES_TOKEN}" \
         --metrics-retention-days "${METRICS_RETENTION_DAYS}"

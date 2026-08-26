@@ -495,6 +495,16 @@ phase_analyzers() {
     . "./${ANALYZERS_ENV}"
     set +a
 
+    # v4 stores these with a trailing slash and copes with it; v5 concatenates
+    # and produces a double slash. On OSV that is fatal: the ecosystem archive
+    # at .../osv-vulnerabilities.storage.googleapis.com//Maven/all.zip answers
+    # 404, the mirror retries six times and gives up terminally.
+    DT_OSV_URL="${DT_OSV_URL%/}"
+    DT_NVD_FEEDS_URL="${DT_NVD_FEEDS_URL%/}"
+    DT_OSSINDEX_URL="${DT_OSSINDEX_URL%/}"
+    DT_GITHUB_URL="${DT_GITHUB_URL%/}"
+    DT_SNYK_URL="${DT_SNYK_URL%/}"
+
     systemctl --user enable "${UNITS[@]}" dependencytrack-setup.service
     systemctl --user start dependencytrack.service
 

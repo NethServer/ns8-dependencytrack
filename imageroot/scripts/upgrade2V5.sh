@@ -51,10 +51,6 @@ cd "${AGENT_STATE_DIR}"
 # to read the v4 schema and write the v5 one: a later apiserver upgrades what it
 # produced through Flyway on its first boot.
 V4_MIGRATOR_IMAGE="${V4_MIGRATOR_IMAGE:-ghcr.io/dependencytrack/v4-migrator:5.0.4}"
-# Pre-pulled to shorten the outage. A mismatch with what 2.0.0 ships costs a
-# wasted download and nothing else, so this is never fatal.
-V5_APISERVER_IMAGE="${V5_APISERVER_IMAGE:-docker.io/dependencytrack/apiserver:5.0.4}"
-V5_FRONTEND_IMAGE="${V5_FRONTEND_IMAGE:-docker.io/dependencytrack/frontend:5.0.4}"
 
 SRC_CTR="dt_migrate_src"
 DST_CTR="dt_migrate_dst"
@@ -451,11 +447,11 @@ phase_migrate() {
     podman exec "${DST_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V5_DUMP}"
     podman rm --ignore -f "${SRC_CTR}" "${DST_CTR}" >/dev/null
 
-    # Downloaded while the migrated dump is safe on disk but before the swap, so
-    # a slow registry does not stretch the window with a half-replaced volume.
-    podman pull "${V5_APISERVER_IMAGE}" "${V5_FRONTEND_IMAGE}" || \
-        echo "${SD_WARN}Could not pre-pull the v5 images, update-module will fetch them."
-
+    # The v5 images are deliberately not pre-pulled here. The instance is down
+    # from the start of this phase until the end of the analyzer phase, so
+    # fetching them early moves the download inside the same outage rather than
+    # shortening it, while pinning a tag in a released v4 script that can only
+    # drift from what 2.0.0 actually ships. update-module pulls the right ones.
     swap_in_migrated_database
 
     mark_pending

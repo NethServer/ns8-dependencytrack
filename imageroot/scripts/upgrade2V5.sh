@@ -37,8 +37,9 @@ SELF=$(readlink -f "$0")
 
 cd "${AGENT_STATE_DIR}"
 
-# Not in org.nethserver.images, so no *_IMAGE variable holds it. Its version
-# need not match the apiserver: Flyway upgrades what it produced on first boot.
+# Not in org.nethserver.images, so no *_IMAGE variable holds it. Bumped by hand,
+# and never past the apiserver 2.0.0 ships: it writes a Flyway head, which an
+# older apiserver would refuse. Behind is safe, Flyway catches up on first boot.
 V4_MIGRATOR_IMAGE="${V4_MIGRATOR_IMAGE:-ghcr.io/dependencytrack/v4-migrator:5.0.4}"
 
 SRC_CTR="dt_migrate_src"

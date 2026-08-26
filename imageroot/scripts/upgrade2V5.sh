@@ -161,10 +161,18 @@ BEGIN
         INSERT INTO "TEAM" ("NAME", "UUID")
             VALUES ('NethServer module', gen_random_uuid()::text) RETURNING "ID" INTO team_id;
     END IF;
+    -- v5 splits these into granular permissions, and the module only ever creates
+    -- a secret and updates an extension config. The umbrella SECRET_MANAGEMENT
+    -- and SYSTEM_CONFIGURATION would also let this key delete any secret and
+    -- rewrite notifications and repositories.
     INSERT INTO "TEAMS_PERMISSIONS" ("TEAM_ID", "PERMISSION_ID")
         SELECT team_id, "ID" FROM "PERMISSION"
-         WHERE "NAME" IN ('SECRET_MANAGEMENT', 'SYSTEM_CONFIGURATION')
+         WHERE "NAME" IN ('SECRET_MANAGEMENT_CREATE', 'SYSTEM_CONFIGURATION_UPDATE')
         ON CONFLICT DO NOTHING;
+    -- A renamed permission would leave the key silently unable to do its job.
+    IF (SELECT count(*) FROM "TEAMS_PERMISSIONS" WHERE "TEAM_ID" = team_id) < 2 THEN
+        RAISE EXCEPTION 'Expected 2 permissions on the module team, the v5 catalog has changed';
+    END IF;
     INSERT INTO "APIKEY" ("COMMENT", "CREATED", "SECRET_HASH", "PUBLIC_ID", "IS_LEGACY")
         VALUES ('Used by the NethServer module', now(), '${hash}', '${pub}', false)
         RETURNING "ID" INTO key_id;

@@ -1,0 +1,162 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2026 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# Point the Trivy analyzer at the Trivy server this module runs.
+#
+# v5 accepts no API key from its environment, so the key goes in through SQL and
+# the rest through the REST API. Never fatal: the Settings page has the values to
+# do it by hand, a failed unit is worse.
+#
+
+set -e -o pipefail
+exec 1>&2 # Redirect any output to the journal (stderr)
+
+cd "${AGENT_STATE_DIR}"
+
+SD_WARN='<4>'
+
+API="http://127.0.0.1:${TCP_PORT}/api"
+DB="dependencytrack"
+SECRET_NAME="trivy-api-token"
+TRIVY_URL="http://127.0.0.1:8282"
+
+# The upgrade script sets it too, it configures the analyzers itself.
+if [[ -n "${DT_TRIVY_SETUP:-}" ]]; then
+    exit 0
+fi
+
+read_secret() {
+    grep -E "^$1=" secrets.env | cut -d= -f2- || true
+}
+
+trivy_token=$(read_secret TRIVY_TOKEN)
+if [[ -z "${trivy_token}" ]]; then
+    echo "${SD_WARN}No Trivy token in secrets.env, leaving the analyzer alone."
+    exit 0
+fi
+
+# The first boot of a fresh database spends minutes in Flyway before serving.
+ready=""
+for _ in $(seq 1 120); do
+    if curl -sf -o /dev/null "${API}/version"; then
+        ready=1
+        break
+    fi
+    sleep 5
+done
+if [[ -z "${ready}" ]]; then
+    echo "${SD_WARN}The apiserver did not answer within 10 minutes, leaving the analyzer alone."
+    echo "${SD_WARN}Run it again with: systemctl --user restart dependencytrack-setup.service"
+    exit 0
+fi
+
+# Format and hashing come from Alpine's ApiKeyGenerator.
+#
+# Called in an `if !`, which turns errexit off for the whole body: every step
+# reports its own failure.
+create_api_key() {
+    local pub sec hash
+    read -r pub sec hash < <(python3 - <<'EOS'
+import hashlib, secrets
+alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456879"
+pub = "".join(secrets.choice(alphabet) for _ in range(8))
+sec = "".join(secrets.choice(alphabet) for _ in range(32))
+print(pub, sec, hashlib.sha3_256(sec.encode()).hexdigest())
+EOS
+    ) || return 1
+    [[ -n "${pub}" && -n "${sec}" && -n "${hash}" ]] || return 1
+
+    podman exec -i postgresql-app psql -U postgres -d "${DB}" -v ON_ERROR_STOP=1 -q <<EOS || return 1
+DO \$\$
+DECLARE team_id bigint; key_id bigint;
+BEGIN
+    -- Reuse the team if an earlier run created it and then failed: "NAME" is
+    -- unique, so a plain insert would make every retry fail.
+    SELECT "ID" INTO team_id FROM "TEAM" WHERE "NAME" = 'NethServer module';
+    IF team_id IS NULL THEN
+        INSERT INTO "TEAM" ("NAME", "UUID")
+            VALUES ('NethServer module', gen_random_uuid()::text) RETURNING "ID" INTO team_id;
+    END IF;
+    -- v5 splits these into granular permissions, and the module only ever creates
+    -- a secret and updates an extension config. The umbrella SECRET_MANAGEMENT
+    -- and SYSTEM_CONFIGURATION would also let this key delete any secret and
+    -- rewrite notifications and repositories.
+    INSERT INTO "TEAMS_PERMISSIONS" ("TEAM_ID", "PERMISSION_ID")
+        SELECT team_id, "ID" FROM "PERMISSION"
+         WHERE "NAME" IN ('SECRET_MANAGEMENT_CREATE', 'SYSTEM_CONFIGURATION_UPDATE')
+        ON CONFLICT DO NOTHING;
+    -- A renamed permission would leave the key silently unable to do its job.
+    IF (SELECT count(*) FROM "TEAMS_PERMISSIONS" WHERE "TEAM_ID" = team_id) < 2 THEN
+        RAISE EXCEPTION 'Expected 2 permissions on the module team, the v5 catalog has changed';
+    END IF;
+    INSERT INTO "APIKEY" ("COMMENT", "CREATED", "SECRET_HASH", "PUBLIC_ID", "IS_LEGACY")
+        VALUES ('Used by the NethServer module', now(), '${hash}', '${pub}', false)
+        RETURNING "ID" INTO key_id;
+    INSERT INTO "APIKEYS_TEAMS" ("TEAM_ID", "APIKEY_ID") VALUES (team_id, key_id);
+END
+\$\$;
+EOS
+
+    DT_API_KEY="odt_${pub}_${sec}" python3 - <<'EOS' || return 1
+import os, agent
+env = agent.read_envfile("secrets.env")
+env["DT_API_KEY"] = os.environ["DT_API_KEY"]
+agent.write_envfile("secrets.env", env)
+EOS
+    api_key="odt_${pub}_${sec}"
+}
+
+api_key=$(read_secret DT_API_KEY)
+if [[ -z "${api_key}" ]]; then
+    if ! create_api_key; then
+        echo "${SD_WARN}Could not create an API key for the module. Configure the Trivy analyzer"
+        echo "${SD_WARN}by hand, the URL and token are in the module settings."
+        exit 0
+    fi
+fi
+
+call() {
+    local method="$1" path="$2" body="$3"
+    curl -sS -o /dev/null -w '%{http_code}' -X "${method}" "${API}/v2${path}" \
+        -H "X-Api-Key: ${api_key}" \
+        -H "Content-Type: application/json" \
+        -d "${body}" || true
+}
+
+# 409: the secret survived an earlier run.
+secret_body=$(N="${SECRET_NAME}" V="${trivy_token}" python3 -c \
+    'import json,os;print(json.dumps({"name":os.environ["N"],"value":os.environ["V"]}))')
+code=$(call POST /secrets "${secret_body}")
+if [[ "${code}" != "201" && "${code}" != "409" ]]; then
+    echo "${SD_WARN}Could not store the Trivy token as a Dependency-Track secret (HTTP ${code})."
+    echo "${SD_WARN}Configure the Trivy analyzer by hand, the values are in the module settings."
+    exit 0
+fi
+
+# Both default to false in v5: left alone, Trivy would be on and scan nothing.
+body=$(U="${TRIVY_URL}" N="${SECRET_NAME}" python3 -c '
+import json, os
+print(json.dumps({"config": {
+    "enabled": True,
+    "apiUrl": os.environ["U"],
+    "apiToken": os.environ["N"],
+    "scanLibrary": True,
+    "scanOs": True,
+}}))')
+# 304: already stored.
+code=$(call PUT "/extension-points/vuln-analyzer/extensions/trivy/config" "${body}")
+case "${code}" in
+    200 | 204 | 304) ;;
+    *)
+        echo "${SD_WARN}Could not configure the Trivy analyzer (HTTP ${code}), do it by hand."
+        exit 0
+        ;;
+esac
+
+python3 -c 'import agent; agent.set_env("DT_TRIVY_SETUP", "done")'
+echo "Trivy analyzer configured against ${TRIVY_URL}."

@@ -12,4 +12,11 @@ set -e
 # Redirect any output to the journal (stderr)
 exec 1>&2
 
+systemctl --user enable dependencytrack-setup.service
 systemctl --user try-restart dependencytrack.service
+
+# The try-restart above stopped it through PartOf=, which never starts it back.
+# Restarting it also retries a Trivy setup that failed earlier.
+if systemctl --user --quiet is-active dependencytrack.service; then
+    systemctl --user --no-block start dependencytrack-setup.service
+fi

@@ -11,5 +11,8 @@ exec 1>&2
 
 # If the control reaches this step, the service can be enabled and started
 
-systemctl --user enable dependencytrack.service
+systemctl --user enable dependencytrack.service dependencytrack-setup.service
 systemctl --user restart dependencytrack.service
+
+# --no-block: the setup waits minutes for Flyway. Its outcome is in the journal.
+systemctl --user --no-block restart dependencytrack-setup.service

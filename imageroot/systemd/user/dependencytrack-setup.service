@@ -1,0 +1,22 @@
+#
+# Copyright (C) 2026 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# A unit rather than a configure-module step: the first boot spends minutes in
+# Flyway, and a unit retries at every start instead of blocking the task.
+
+[Unit]
+Description=Configure Dependency-Track for the module
+PartOf=dependencytrack.service
+After=dependencytrack.service dependencytrack-apiserver.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# runagent loads state/environment and enters state/ on its own.
+ExecStart=/usr/local/bin/runagent module-setup-trivy
+SyslogIdentifier=%u
+
+[Install]
+WantedBy=default.target

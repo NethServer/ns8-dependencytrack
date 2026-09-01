@@ -1,0 +1,16 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2026 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# Rewrite the nginx configuration before 20restart reloads the pod, so an
+# instance installed by an older image picks up changes to it.
+
+set -e
+
+# Redirect any output to the journal (stderr)
+exec 1>&2
+
+module-expand-nginx

@@ -434,7 +434,10 @@ phase_migrate() {
     echo "v4 analyzer settings saved to state/${ANALYZERS_ENV}"
 
     mkdir -p "${BACKUP_DIR}"
-    podman exec "${SRC_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V4_DUMP}"
+    # Through a temporary name: a dump cut short by a full disk would otherwise
+    # sit there under the name the failure message tells the admin to restore.
+    podman exec "${SRC_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V4_DUMP}.tmp"
+    mv "${V4_DUMP}.tmp" "${V4_DUMP}"
     echo "v4 backup written to state/${V4_DUMP}"
 
     # Both raised on the migrator preflight's request.
@@ -457,8 +460,16 @@ phase_migrate() {
         echo "${SD_WARN}be configured by hand."
     fi
 
-    podman exec "${DST_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V5_DUMP}"
+    # Same reason, and here it also gates the resume path: only a complete dump
+    # may be named V5_DUMP, since a resumed run reloads it without asking.
+    podman exec "${DST_CTR}" pg_dump -U postgres -Fc "${DB}" >"${V5_DUMP}.tmp"
+    mv "${V5_DUMP}.tmp" "${V5_DUMP}"
     podman rm --ignore -f "${SRC_CTR}" "${DST_CTR}" >/dev/null
+    # The v5 copy is disposable now that it is dumped, and dropping it here
+    # rather than in cleanup_temp lowers the peak disk use during the swap.
+    if podman volume exists "${DST_VOL}"; then
+        podman volume rm --force "${DST_VOL}" >/dev/null
+    fi
 
     swap_in_migrated_database
 

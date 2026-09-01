@@ -233,19 +233,14 @@ EOS
     rm -f "${SWAP_FLAG}" "${V5_DUMP}" "${WORK_DIR}/${DB}_restore.sh"
 }
 
-# The dump plus the reloaded database live next to the current one for a while.
-# How much that needs cannot be guessed from the database size -- a compressed
-# dump is a fraction of it -- so the figures are printed and the admin judges.
+# No threshold: what the upgrade needs cannot be guessed from the database size,
+# and du cannot even read the volume from here. The free space is printed and the
+# admin judges.
 report_disk_space() {
-    local mountpoint used avail
-    if podman volume exists postgres-data 2>/dev/null; then
-        mountpoint=$(podman volume inspect postgres-data --format '{{.Mountpoint}}' 2>/dev/null)
-        used=$(du -sh "${mountpoint}" 2>/dev/null | cut -f1)
-    fi
-    avail=$(df -h --output=avail . 2>/dev/null | tail -1 | tr -d ' ')
-    echo "Disk: the v4 database holds ${used:-an unknown amount}, and ${avail:-?} is free"
-    echo "on ${PWD}. The migration writes a dump of the database, then a second copy of"
-    echo "it while the new one is loaded."
+    local avail
+    avail=$(df -h --output=avail . 2>/dev/null | tail -1 | tr -d ' ') || true
+    echo "Disk: ${avail:-an unknown amount} free on ${PWD}. The migration keeps a dump of"
+    echo "the v4 database, a full v5 copy of it and a v5 dump on disk at the same time."
     echo
 }
 

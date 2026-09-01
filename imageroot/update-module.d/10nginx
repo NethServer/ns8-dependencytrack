@@ -5,12 +5,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
-# Rewrite the nginx configuration before 20restart reloads the pod, so an
-# instance installed by an older image picks up changes to it.
+# nginx/default.conf is only written at create-module, so an instance updated in
+# place keeps the file it was installed with. 20restart recreates the container
+# right after and picks the new one up.
 
 set -e
 
 # Redirect any output to the journal (stderr)
 exec 1>&2
 
-module-expand-nginx
+../actions/create-module/30expand_nginx_config

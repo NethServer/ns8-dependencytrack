@@ -186,7 +186,7 @@ BEGIN
         ON CONFLICT DO NOTHING;
     -- A renamed permission would leave the key silently unable to do its job.
     IF (SELECT count(*) FROM "TEAMS_PERMISSIONS" WHERE "TEAM_ID" = team_id) < 2 THEN
-        RAISE EXCEPTION 'Expected 2 permissions on the module team, the v5 catalog has changed';
+        RAISE EXCEPTION 'Expected at least 2 permissions on the module team, the v5 catalog has changed';
     END IF;
     INSERT INTO "APIKEY" ("COMMENT", "CREATED", "SECRET_HASH", "PUBLIC_ID", "IS_LEGACY")
         VALUES ('Used by the NethServer module', now(), '${hash}', '${pub}', false)
@@ -693,13 +693,22 @@ print(json.dumps({"config": config}))')
 
     python3 -c 'import agent; agent.set_env("DT_TRIVY_SETUP", "done")'
 
+    if ! refresh_metrics; then
+        echo "${SD_WARN}Could not recompute the metrics: the dashboards read zero until"
+        echo "${SD_WARN}Dependency-Track recomputes them. The data itself is there, the"
+        echo "${SD_WARN}project pages show it."
+    fi
+
     echo
+    # v4 enables OSV per ecosystem, so an empty list is how it says disabled.
+    local osv_state="${DT_OSV_ECOSYSTEMS:-off}"
+    # Printed even when something was rejected: that is when knowing what did
+    # land matters most.
+    echo "Upgrade complete. Analyzers carried over: trivy=${trivy_state}," \
+         "internal=${DT_INTERNAL_ENABLED}, nvd=${DT_NVD_ENABLED}, osv=${osv_state}."
     if [[ -n "${failed}" ]]; then
-        echo "${SD_WARN}Upgrade complete, but these analyzers were rejected and keep the v5"
-        echo "${SD_WARN}defaults: ${failed}. Configure them by hand."
-    else
-        echo "Upgrade complete. Analyzers carried over: trivy=${trivy_state}," \
-             "internal=${DT_INTERNAL_ENABLED}, nvd=${DT_NVD_ENABLED}, osv=[${DT_OSV_ECOSYSTEMS}]."
+        echo "${SD_WARN}These analyzers were rejected and keep the v5 defaults: ${failed}."
+        echo "${SD_WARN}Configure them by hand."
     fi
     echo
     echo "${SD_WARN}v5 cannot decrypt what v4 encrypted, so the migrator cleared every secret."

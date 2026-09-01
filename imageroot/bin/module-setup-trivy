@@ -92,7 +92,7 @@ BEGIN
         ON CONFLICT DO NOTHING;
     -- A renamed permission would leave the key silently unable to do its job.
     IF (SELECT count(*) FROM "TEAMS_PERMISSIONS" WHERE "TEAM_ID" = team_id) < 2 THEN
-        RAISE EXCEPTION 'Expected 2 permissions on the module team, the v5 catalog has changed';
+        RAISE EXCEPTION 'Expected at least 2 permissions on the module team, the v5 catalog has changed';
     END IF;
     INSERT INTO "APIKEY" ("COMMENT", "CREATED", "SECRET_HASH", "PUBLIC_ID", "IS_LEGACY")
         VALUES ('Used by the NethServer module', now(), '${hash}', '${pub}', false)

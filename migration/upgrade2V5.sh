@@ -301,6 +301,8 @@ next_step() {
 
 # Not local: the EXIT trap fires once phase_migrate has returned.
 completed=""
+# Set once the units are down, so a failure before that does not claim they are.
+stopped=""
 
 phase_migrate() {
     # An ERR trap would miss the `exit 1` of the checks below.
@@ -308,6 +310,12 @@ phase_migrate() {
         local rc=$?
         cleanup_temp
         if [[ -n "${completed}" ]]; then
+            return
+        fi
+        if [[ -z "${stopped}" ]]; then
+            echo "${SD_ERR}Upgrade to Dependency-Track v5 failed (exit ${rc}) before it touched"
+            echo "${SD_ERR}anything: the instance is still running on v4."
+            echo "${SD_ERR}Fix the reported error, then run this script again."
             return
         fi
         echo "${SD_ERR}Upgrade to Dependency-Track v5 failed (exit ${rc}). Services are left"
@@ -326,6 +334,9 @@ phase_migrate() {
     confirm_backup
     mkdir -p "${WORK_DIR}"
 
+    # Set before the disable: from here on the instance is no longer as it was,
+    # even if the stop below fails.
+    stopped=1
     # Every unit, not just the pod: the others are WantedBy=default.target too,
     # and their BindsTo would drag the pod back up after a reboot.
     systemctl --user disable "${UNITS[@]}" >/dev/null 2>&1 || true

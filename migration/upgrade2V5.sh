@@ -113,6 +113,36 @@ src_query() {
     podman exec "${SRC_CTR}" psql -U postgres -d "${DB}" -tAc "$1"
 }
 
+# The migrator carries v4's PROJECTMETRICS rows over but nothing recomputes them,
+# and PORTFOLIOMETRICS_GLOBAL only counts rows dated within a day of each point
+# it aggregates, so stale rows read as zero. The hourly portfolio-metrics-update
+# task does not rescue it either: it only picks projects with no row for the
+# current UTC day, which the migrated rows already satisfy.
+#
+# Both operations are plain SQL in v5, so this needs no API key and none of the
+# portfolio permissions the module key deliberately lacks.
+refresh_metrics() {
+    # TIME ZONE: the procedure inserts with now() into daily partitions the
+    # migrator anchored to UTC, and postgresql-app.service passes no TZ.
+    # CONCURRENTLY: the apiserver is serving by now, and a plain refresh would
+    # lock every dashboard read out. It demands a transaction, hence the BEGIN.
+    podman exec -i postgresql-app psql -U postgres -d "${DB}" -v ON_ERROR_STOP=1 -q <<'EOS'
+SET TIME ZONE 'UTC';
+DO $$
+DECLARE p uuid;
+BEGIN
+    FOR p IN SELECT "UUID"::text::uuid FROM "PROJECT" LOOP
+        CALL "UPDATE_PROJECT_METRICS"(p);
+    END LOOP;
+END
+$$;
+BEGIN;
+SET LOCAL TIME ZONE 'UTC';
+REFRESH MATERIALIZED VIEW CONCURRENTLY "PORTFOLIOMETRICS_GLOBAL";
+COMMIT;
+EOS
+}
+
 run_migrator() {
     podman run --rm --network "${NET}" --env TZ=UTC "${V4_MIGRATOR_IMAGE}" "$@" \
         --target-url "${JDBC_DST}" --target-user postgres --target-pass "${POSTGRES_TOKEN}"
@@ -650,8 +680,9 @@ print(json.dumps({"config": config}))')
     dump_size=$(du -sh "${BACKUP_DIR}" 2>/dev/null | cut -f1)
     echo "The v4 database is kept at state/${V4_DUMP}${dump_size:+ (${dump_size})}."
     echo "It is a faster way back than a restore, and module backups do not include it."
-    echo "Remove it once you have checked the instance and taken a backup of it:"
-    echo "    runagent -m ${MODULE_ID} rm -rf ${BACKUP_DIR}"
+    echo "Remove it, and the working directory this phase reads, once you have checked"
+    echo "the instance and taken a backup of it:"
+    echo "    runagent -m ${MODULE_ID} rm -rf ${BACKUP_DIR} ${WORK_DIR}"
 }
 
 ##

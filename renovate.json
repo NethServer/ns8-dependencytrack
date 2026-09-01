@@ -5,16 +5,24 @@
   ],
   "packageRules": [
     {
-      "matchDatasources": ["docker"],
+      "description": "The frontend and the apiserver must always move together",
+      "matchDatasources": [
+        "docker"
+      ],
       "matchPackageNames": [
         "dependencytrack/apiserver",
         "dependencytrack/frontend"
       ],
-      "allowedVersions": "<5"
+      "groupName": "dependency-track",
+      "allowedVersions": "<6"
     },
     {
-      "matchDatasources": ["docker"],
-      "matchPackageNames": ["nginx"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "nginx"
+      ],
       "allowedVersions": "<1.31"
     }
   ]

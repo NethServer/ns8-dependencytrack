@@ -14,6 +14,7 @@ EnvironmentFile=%S/state/environment
 EnvironmentFile=%S/state/secrets.env
 Restart=always
 TimeoutStopSec=70
+TimeoutStartSec=120
 ExecStartPre=/bin/rm -f %t/postgresql-app.pid %t/postgresql-app.ctr-id
 ExecStartPre=/bin/mkdir -p %S/state/restore/
 ExecStart=/usr/bin/podman run --conmon-pidfile %t/postgresql-app.pid \
@@ -26,7 +27,8 @@ ExecStart=/usr/bin/podman run --conmon-pidfile %t/postgresql-app.pid \
     --env POSTGRES_USER="postgres" \
     --env POSTGRES_PASSWORD=${POSTGRES_TOKEN} \
     ${POSTGRES_IMAGE}
-ExecStartPost=/usr/bin/bash -c "while ! podman  exec postgresql-app psql -U postgres -d dependencytrack ;  do sleep 5 ; done"
+# Must give up before TimeoutStartSec, so the failure has a readable cause.
+ExecStartPost=/usr/bin/timeout 90 /usr/bin/bash -c "while ! podman exec postgresql-app psql -U postgres -d dependencytrack ; do sleep 5 ; done"
 ExecStop=/usr/bin/podman stop --ignore --cidfile %t/postgresql-app.ctr-id -t 10
 ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/postgresql-app.ctr-id
 ExecReload=/usr/bin/podman kill -s HUP postgresql-app

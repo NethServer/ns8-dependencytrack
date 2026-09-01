@@ -233,6 +233,22 @@ EOS
     rm -f "${SWAP_FLAG}" "${V5_DUMP}" "${WORK_DIR}/${DB}_restore.sh"
 }
 
+# The dump plus the reloaded database live next to the current one for a while.
+# How much that needs cannot be guessed from the database size -- a compressed
+# dump is a fraction of it -- so the figures are printed and the admin judges.
+report_disk_space() {
+    local mountpoint used avail
+    if podman volume exists postgres-data 2>/dev/null; then
+        mountpoint=$(podman volume inspect postgres-data --format '{{.Mountpoint}}' 2>/dev/null)
+        used=$(du -sh "${mountpoint}" 2>/dev/null | cut -f1)
+    fi
+    avail=$(df -h --output=avail . 2>/dev/null | tail -1 | tr -d ' ')
+    echo "Disk: the v4 database holds ${used:-an unknown amount}, and ${avail:-?} is free"
+    echo "on ${PWD}. The migration writes a dump of the database, then a second copy of"
+    echo "it while the new one is loaded."
+    echo
+}
+
 # Only asked on a terminal: a non-interactive caller says so with --yes rather
 # than hang on a read nobody sees.
 confirm_backup() {
@@ -256,6 +272,8 @@ confirm_backup() {
     echo "    api-cli run list-backups | jq '.backups[]'"
     echo "    api-cli run run-backup --data '{\"id\": <backup id>}'"
     echo
+
+    report_disk_space
 
     if [[ -n "${assume_yes}" ]]; then
         echo "Proceeding: --yes was given."

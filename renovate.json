@@ -17,6 +17,16 @@
       "allowedVersions": "<6"
     },
     {
+      "description": "The migrator writes the schema this version expects, so it must not go past v5",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "ghcr.io/dependencytrack/v4-migrator"
+      ],
+      "allowedVersions": "<6"
+    },
+    {
       "matchDatasources": [
         "docker"
       ],
@@ -24,6 +34,19 @@
         "nginx"
       ],
       "allowedVersions": "<1.31"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Follow the v4-migrator tag pinned in the upgrade script",
+      "managerFilePatterns": [
+        "migration/upgrade2V5.sh"
+      ],
+      "matchStrings": [
+        "V4_MIGRATOR_IMAGE:-(?<depName>[^:\\s]+):(?<currentValue>[^}\"\\s]+)"
+      ],
+      "datasourceTemplate": "docker"
     }
   ]
 }

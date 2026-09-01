@@ -1,0 +1,37 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2026 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# A backup taken before 2.0.0 holds a v4 database, which a v5 apiserver cannot
+# read. Checked from the dump's table of contents, before anything is written.
+
+set -e -o pipefail
+exec 1>&2 # Redirect any output to the journal (stderr)
+
+SD_ERR='<3>'
+
+if [[ ! -f dependencytrack.pg_dump ]]; then
+    exit 0 # nothing was restored, create-module took care of the database
+fi
+
+# Mounted, not piped: a custom-format dump on stdin cannot be seeked, so
+# pg_restore stops after the table of contents while podman keeps pushing
+# gigabytes into a stdin nobody reads.
+toc=$(podman run --rm --network=none --volume "${PWD}:/srv:z" "${POSTGRES_IMAGE}" \
+    pg_restore --list /srv/dependencytrack.pg_dump 2>/dev/null) || {
+    echo "${SD_ERR}Could not read dependencytrack.pg_dump: the backup looks damaged."
+    exit 1
+}
+
+# v5 tracks its schema with Flyway, v4 with DataNucleus and Liquibase.
+if grep -q flyway_schema_history <<<"${toc}"; then
+    exit 0
+fi
+
+echo "${SD_ERR}This backup holds a Dependency-Track v4 database, which a v5 apiserver"
+echo "${SD_ERR}cannot read. Restore it into an instance still on 1.x, then follow the"
+echo "${SD_ERR}v4 to v5 upgrade procedure described in the module README."
+exit 1

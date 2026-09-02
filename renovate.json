@@ -5,17 +5,49 @@
   ],
   "packageRules": [
     {
-      "matchDatasources": ["docker"],
+      "description": "The frontend and the apiserver must always move together",
+      "matchDatasources": [
+        "docker"
+      ],
       "matchPackageNames": [
         "dependencytrack/apiserver",
         "dependencytrack/frontend"
       ],
-      "allowedVersions": "<5"
+      "groupName": "dependency-track",
+      "allowedVersions": "<6"
     },
     {
-      "matchDatasources": ["docker"],
-      "matchPackageNames": ["nginx"],
+      "description": "Moves with the apiserver: it writes the schema that apiserver expects",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "ghcr.io/dependencytrack/v4-migrator"
+      ],
+      "allowedVersions": "<6",
+      "groupName": "dependency-track"
+    },
+    {
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "nginx"
+      ],
       "allowedVersions": "<1.31"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Follow the v4-migrator tag pinned in the upgrade script",
+      "managerFilePatterns": [
+        "migration/upgrade2V5.sh"
+      ],
+      "matchStrings": [
+        "V4_MIGRATOR_IMAGE:-(?<depName>[^:\\s]+):(?<currentValue>[^}\"\\s]+)"
+      ],
+      "datasourceTemplate": "docker"
     }
   ]
 }

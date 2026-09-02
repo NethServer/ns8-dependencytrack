@@ -134,7 +134,15 @@ permissions and API keys are preserved. Portfolio metrics older than 90 days are
 
 Services stay down, the error is in the journal
 (`journalctl _UID=$(id -u dependencytrack1) -e`), both dumps stay on disk. Fix the cause and
-run the script again: it resumes.
+run the script again.
+
+A run interrupted while the database was being replaced resumes from
+`state/dependencytrack-v5.pg_dump`: it does not migrate again and does not ask to confirm.
+Until you relaunch it, the instance has no usable database, so relaunching is the way out,
+not a manual repair.
+
+If that dump is gone, the script refuses to guess: restore
+`state/backup-v4/dependencytrack-v4.pg_dump` into a 1.x instance by hand.
 
 Restoring a backup taken before 2.0.0 is refused: it holds a v4 database. Restore it into a
 1.x instance instead.

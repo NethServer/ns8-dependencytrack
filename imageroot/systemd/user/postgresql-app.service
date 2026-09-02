@@ -26,7 +26,8 @@ ExecStart=/usr/bin/podman run --conmon-pidfile %t/postgresql-app.pid \
     --env POSTGRES_USER="postgres" \
     --env POSTGRES_PASSWORD=${POSTGRES_TOKEN} \
     ${POSTGRES_IMAGE}
-ExecStartPost=/usr/bin/bash -c "while ! podman  exec postgresql-app psql -U postgres -d dependencytrack ;  do sleep 5 ; done"
+# Must give up before the 90s systemd allows, so the failure has a readable cause.
+ExecStartPost=/usr/bin/timeout 75 /usr/bin/bash -c "while ! podman exec postgresql-app psql -U postgres -d dependencytrack ; do sleep 5 ; done"
 ExecStop=/usr/bin/podman stop --ignore --cidfile %t/postgresql-app.ctr-id -t 10
 ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/postgresql-app.ctr-id
 ExecReload=/usr/bin/podman kill -s HUP postgresql-app

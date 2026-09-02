@@ -2,6 +2,12 @@ name: "Publish images"
 
 on:
   push:
+    # Both keys: declaring tags-ignore alone stops branch pushes from firing.
+    branches:
+      - '**'
+    # Moving the tag below would otherwise retrigger this workflow, forever.
+    tags-ignore:
+      - stable
 
 permissions:
   packages: write
@@ -10,3 +16,32 @@ jobs:
   publish-images:
     if: github.run_number > 1
     uses: NethServer/ns8-github-actions/.github/workflows/publish-branch.yml@v1
+
+  # The README downloads migration/upgrade2V5.sh from this tag and tells the
+  # admin to install this image, so the script always matches the module it
+  # installs: its migrator pin can never get ahead of that apiserver.
+  move-stable:
+    needs: publish-images
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Move the stable tag and image
+        run: |
+          v="${GITHUB_REF_NAME}"
+          # A prerelease carries a suffix and does not match. Below 2.0.0 there
+          # is no migration/ directory to serve.
+          [[ "${v}" =~ ^([0-9]+)\.[0-9]+\.[0-9]+$ ]] || exit 0
+          (( BASH_REMATCH[1] >= 2 )) || exit 0
+          git tag -f -m "Release ${v}" stable
+          git push -f origin stable
+          # The repository is ns8-<name>, the image is <name>.
+          owner="${GITHUB_REPOSITORY%%/*}"; name="${GITHUB_REPOSITORY##*/}"
+          image="ghcr.io/${owner,,}/${name#ns8-}"
+          skopeo login -u "${{ github.actor }}" --password-stdin ghcr.io <<<"${{ secrets.GITHUB_TOKEN }}"
+          skopeo copy --all "docker://${image}:${v}" "docker://${image}:stable"

@@ -28,6 +28,8 @@ server {
 
   ### DEPENDENCY TRACK APISERVER
   location /api/ {
+    # nginx' 1m default answers 413 on a real BOM upload.
+    client_max_body_size 64m;
     proxy_pass http://127.0.0.1:8080/api/;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-Host $host;

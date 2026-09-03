@@ -40,7 +40,7 @@ buildah config --entrypoint=/ \
     --label="org.nethserver.rootfull=0" \
     --label="org.nethserver.images=docker.io/postgres:17.11-alpine docker.io/dependencytrack/frontend:5.0.5 docker.io/dependencytrack/apiserver:5.0.5 docker.io/aquasec/trivy:0.74.0 docker.io/library/nginx:1.30.4-alpine" \
     --label="org.nethserver.min-core=3.20.1" \
-    --label="org.nethserver.min-from=2.0.0-0" \
+    --label="org.nethserver.min-from=2.0.0" \
     "${container}"
 # Commit the image
 buildah commit "${container}" "${repobase}/${reponame}"

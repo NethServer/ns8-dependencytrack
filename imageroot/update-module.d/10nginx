@@ -1,0 +1,16 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2026 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# The config is only written at create-module, so an updated instance keeps the
+# old file. 20restart recreates the container right after and picks the new one up.
+
+set -e
+
+# Redirect any output to the journal (stderr)
+exec 1>&2
+
+../actions/create-module/30expand_nginx_config

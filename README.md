@@ -79,7 +79,7 @@ open with a bare `Permission denied`. The `stable` tag serves the script of the 
 so its migrator matches the version you install in step 3:
 
     curl -fsSL -o /tmp/upgrade2V5.sh \
-      https://raw.githubusercontent.com/NethServer/ns8-dependencytrack/stable/migration/upgrade2V5.sh
+      https://raw.githubusercontent.com/NethServer/ns8-dependencytrack/main/migration/upgrade2V5.sh
 
 ### 2. Migrate the database — on the node running the app
 

@@ -39,7 +39,7 @@ cd "${AGENT_STATE_DIR}"
 
 # Never past the apiserver the stable release ships: it writes a Flyway head an
 # older one refuses. Behind is safe, Flyway catches up on first boot.
-V4_MIGRATOR_IMAGE="${V4_MIGRATOR_IMAGE:-ghcr.io/dependencytrack/v4-migrator:5.0.5}"
+V4_MIGRATOR_IMAGE="${V4_MIGRATOR_IMAGE:-ghcr.io/dependencytrack/v4-migrator:5.1.0}"
 
 SRC_CTR="dt_migrate_src"
 DST_CTR="dt_migrate_dst"

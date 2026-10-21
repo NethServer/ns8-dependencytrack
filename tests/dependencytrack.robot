@@ -26,6 +26,13 @@ Backend URL is reachable
     ...    return_rc=True  return_stdout=False
     Should Be Equal As Integers    ${rc}  0
 
+Add module
+    [Arguments]    ${image}
+    ${output}  ${rc} =    Execute Command    add-module ${image} 1
+    ...    return_rc=True
+    Should Be Equal As Integers    ${rc}  0
+    RETURN    ${output}
+
 API answers
     ${rc} =    Execute Command    curl -sf -o /dev/null ${dt_api}/version
     ...    return_rc=True  return_stdout=False
@@ -74,13 +81,25 @@ Upload the test BOM
     ${response} =    Evaluate    json.loads($output)    modules=json
     Wait Until Keyword Succeeds    5 minutes    5 seconds    BOM is processed    ${response['token']}
 
-Project has Trivy findings
+Project UUID
     [Arguments]    ${version}
     ${output}  ${rc} =    Execute Command    curl -sf -H 'Authorization: Bearer ${dt_token}' '${dt_api}/v1/project/lookup?name=${PROJECT}&version=${version}'
     ...    return_rc=True
     Should Be Equal As Integers    ${rc}  0
     ${project} =    Evaluate    json.loads($output)    modules=json
-    ${output}  ${rc} =    Execute Command    curl -sf -H 'Authorization: Bearer ${dt_token}' ${dt_api}/v1/finding/project/${project['uuid']}
+    RETURN    ${project['uuid']}
+
+Trivy analyzer config
+    ${output}  ${rc} =    Execute Command    curl -sf -H 'Authorization: Bearer ${dt_token}' ${dt_api}/v2/extension-points/vuln-analyzer/extensions/trivy/config
+    ...    return_rc=True
+    Should Be Equal As Integers    ${rc}  0
+    ${response} =    Evaluate    json.loads($output)    modules=json
+    RETURN    ${response['config']}
+
+Project has Trivy findings
+    [Arguments]    ${version}
+    ${uuid} =    Project UUID    ${version}
+    ${output}  ${rc} =    Execute Command    curl -sf -H 'Authorization: Bearer ${dt_token}' ${dt_api}/v1/finding/project/${uuid}
     ...    return_rc=True
     Should Be Equal As Integers    ${rc}  0
     # The vulnerability database keeps changing, so expect at least one finding, not an exact count.
@@ -90,14 +109,12 @@ Project has Trivy findings
 
 *** Test Cases ***
 Check if dependencytrack is installed correctly
+    # The update scenario starts from the NS8 stable release, then upgrades it below.
     IF    '${SCENARIO}' == 'update'
-        ${output}  ${rc} =    Execute Command    add-module dependencytrack 1
-        ...    return_rc=True
+        ${output} =    Wait Until Keyword Succeeds    5 times    10 seconds    Add module    dependencytrack
     ELSE
-        ${output}  ${rc} =    Execute Command    add-module ${IMAGE_URL} 1
-        ...    return_rc=True
+        ${output} =    Add module    ${IMAGE_URL}
     END
-    Should Be Equal As Integers    ${rc}  0
     &{output} =    Evaluate    ${output}
     Set Suite Variable    ${module_id}    ${output.module_id}
 
@@ -105,18 +122,24 @@ Check if dependencytrack can be configured
     ${rc} =    Execute Command    api-cli run module/${module_id}/configure-module --data '{"host": "dp.fqdn.test","lets_encrypt": false}'
     ...    return_rc=True  return_stdout=False
     Should Be Equal As Integers    ${rc}  0
+    ${config} =    Run task    module/${module_id}/get-configuration    {}
+    Set Suite Variable    ${config_before}    ${config}
 
 Retrieve dependencytrack backend URL
     # Assuming the test is running on a single node cluster
     ${response} =    Run task     module/traefik1/get-route    {"instance":"${module_id}"}
     Set Suite Variable    ${backend_url}    ${response['url']}
+    Set Suite Variable    ${dt_api}    ${backend_url.rstrip('/')}/api
 
 Check if dependencytrack works as expected
     Retry test    Backend URL is reachable
+    Wait Until Keyword Succeeds    10 minutes    5 seconds    API answers
+
+Verify dependencytrack frontend title
+    ${output} =    Execute Command    curl -s ${backend_url}
+    Should Contain    ${output}    <title>Dependency-Track</title>
 
 Check if Trivy finds vulnerabilities in a BOM
-    Set Suite Variable    ${dt_api}    ${backend_url.rstrip('/')}/api
-    Wait Until Keyword Succeeds    10 minutes    5 seconds    API answers
     Wait Until Keyword Succeeds    2 minutes    5 seconds    Set the Dependency-Track admin password
     Login to Dependency-Track
     Enable the Trivy analyzer
@@ -124,27 +147,44 @@ Check if Trivy finds vulnerabilities in a BOM
     Upload the test BOM    1.0
     # Trivy downloads its database on first start, about one minute with good egress.
     Wait Until Keyword Succeeds    10 minutes    10 seconds    Project has Trivy findings    1.0
+    ${uuid} =    Project UUID    1.0
+    Set Suite Variable    ${project_uuid}    ${uuid}
 
-Check if dependencytrack survives the update
+Update dependencytrack to the image under test
     Skip If    '${SCENARIO}' != 'update'    scenario is ${SCENARIO}, nothing to update
-    ${rc} =    Execute Command    api-cli run update-module --data '{"force":true,"module_url":"${IMAGE_URL}","instances":["${module_id}"]}'
+    ${rc} =    Execute Command
+    ...    api-cli run update-module --data '{"force":true,"module_url":"${IMAGE_URL}","instances":["${module_id}"]}'
     ...    return_rc=True  return_stdout=False
     Should Be Equal As Integers    ${rc}  0
-    ${config} =    Run task    module/${module_id}/get-configuration    {}
-    Should Be Equal    ${config['host']}    dp.fqdn.test
-    Retry test    Backend URL is reachable
 
-Check if Trivy still works after the update
+Check dependencytrack works after the update
     Skip If    '${SCENARIO}' != 'update'    scenario is ${SCENARIO}, nothing to update
+    Retry test    Backend URL is reachable
     Wait Until Keyword Succeeds    10 minutes    5 seconds    API answers
-    Wait Until Keyword Succeeds    2 minutes    5 seconds    Login to Dependency-Track
-    Project has Trivy findings    1.0
-    Upload the test BOM    2.0
-    Wait Until Keyword Succeeds    10 minutes    10 seconds    Project has Trivy findings    2.0
-
-Verify dependencytrack frontend title
     ${output} =    Execute Command    curl -s ${backend_url}
     Should Contain    ${output}    <title>Dependency-Track</title>
+
+Check the configuration survives the update
+    Skip If    '${SCENARIO}' != 'update'    scenario is ${SCENARIO}, nothing to update
+    ${config} =    Run task    module/${module_id}/get-configuration    {}
+    Should Be Equal    ${config['host']}    dp.fqdn.test
+    # A new token would break Trivy, since Dependency-Track keeps the old one in its trivy-token secret.
+    Should Be Equal    ${config['trivy_token']}    ${config_before['trivy_token']}
+    Should Be Equal    ${config['trivy_url']}    ${config_before['trivy_url']}
+    Wait Until Keyword Succeeds    2 minutes    5 seconds    Login to Dependency-Track
+    ${trivy} =    Trivy analyzer config
+    Should Be True    ${trivy['enabled']}    the Trivy analyzer was disabled by the update
+
+Check the data survives the update
+    Skip If    '${SCENARIO}' != 'update'    scenario is ${SCENARIO}, nothing to update
+    ${uuid} =    Project UUID    1.0
+    Should Be Equal    ${uuid}    ${project_uuid}
+    Project has Trivy findings    1.0
+
+Check Trivy still analyzes a new BOM after the update
+    Skip If    '${SCENARIO}' != 'update'    scenario is ${SCENARIO}, nothing to update
+    Upload the test BOM    2.0
+    Wait Until Keyword Succeeds    10 minutes    10 seconds    Project has Trivy findings    2.0
 
 Take screenshots
     [Tags]    ui

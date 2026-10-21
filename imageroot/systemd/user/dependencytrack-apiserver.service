@@ -23,6 +23,7 @@ ExecStart=/usr/bin/podman run --conmon-pidfile %t/dependencytrack-apiserver.pid 
     --env DT_DATASOURCE_URL="jdbc:postgresql://postgresql-app:5432/dependencytrack" \
     --env DT_DATASOURCE_USERNAME="postgres" \
     --env DT_DATASOURCE_PASSWORD=${POSTGRES_TOKEN} \
+    --env DT_OUTBOUND_ALLOWED_DESTINATIONS=external,private,127.0.0.1 \
     --env EXTRA_JAVA_OPTIONS="-Xmx4G" \
     --volume dtrack-data:/data \
     ${APISERVER_IMAGE}

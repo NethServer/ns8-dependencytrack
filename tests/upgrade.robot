@@ -1,8 +1,11 @@
 *** Settings ***
 Library    SSHLibrary
 Resource    api.resource
+# The stable release is already v5, so the v4 migration needs its own suite. It doubles the run time, keep it to one leg.
+Suite Setup    Skip If    '${SCENARIO}' != 'update'    scenario is ${SCENARIO}, the v4 migration runs on the update leg
 
 *** Variables ***
+${SCENARIO}    install
 # Last 1.x release: the v4 instance the migration starts from.
 ${V4_IMAGE_URL}    ghcr.io/nethserver/dependencytrack:1.0.11
 ${DT_PASSWORD}    Upgrade,1234

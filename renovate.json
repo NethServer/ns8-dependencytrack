@@ -17,17 +17,6 @@
       "allowedVersions": "<6"
     },
     {
-      "description": "Moves with the apiserver: it writes the schema that apiserver expects. Tracked through the upstream release, not the ghcr tag, which carries no date for minimumReleaseAge",
-      "matchDatasources": [
-        "github-releases"
-      ],
-      "matchPackageNames": [
-        "DependencyTrack/dependency-track"
-      ],
-      "allowedVersions": "<6",
-      "groupName": "dependency-track"
-    },
-    {
       "matchDatasources": [
         "docker"
       ],
@@ -35,20 +24,6 @@
         "nginx"
       ],
       "allowedVersions": "<1.31"
-    }
-  ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Follow the v4-migrator tag pinned in the upgrade script",
-      "managerFilePatterns": [
-        "migration/upgrade2V5.sh"
-      ],
-      "matchStrings": [
-        "V4_MIGRATOR_IMAGE:-ghcr\\.io/dependencytrack/v4-migrator:(?<currentValue>[^}\"\\s]+)"
-      ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "DependencyTrack/dependency-track"
     }
   ]
 }

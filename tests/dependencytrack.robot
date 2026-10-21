@@ -3,6 +3,7 @@ Library    SSHLibrary
 Resource    api.resource
 
 *** Variables ***
+${SCENARIO}    install
 ${ADMIN_USER}    admin
 ${ADMIN_PASSWORD}    Nethesis,1234
 
@@ -27,8 +28,13 @@ Backend URL is reachable
 
 *** Test Cases ***
 Check if dependencytrack is installed correctly
-    ${output}  ${rc} =    Execute Command    add-module ${IMAGE_URL} 1
-    ...    return_rc=True
+    IF    '${SCENARIO}' == 'update'
+        ${output}  ${rc} =    Execute Command    add-module dependencytrack 1
+        ...    return_rc=True
+    ELSE
+        ${output}  ${rc} =    Execute Command    add-module ${IMAGE_URL} 1
+        ...    return_rc=True
+    END
     Should Be Equal As Integers    ${rc}  0
     &{output} =    Evaluate    ${output}
     Set Suite Variable    ${module_id}    ${output.module_id}
@@ -44,6 +50,15 @@ Retrieve dependencytrack backend URL
     Set Suite Variable    ${backend_url}    ${response['url']}
 
 Check if dependencytrack works as expected
+    Retry test    Backend URL is reachable
+
+Check if dependencytrack survives the update
+    Skip If    '${SCENARIO}' != 'update'    scenario is ${SCENARIO}, nothing to update
+    ${rc} =    Execute Command    api-cli run update-module --data '{"force":true,"module_url":"${IMAGE_URL}","instances":["${module_id}"]}'
+    ...    return_rc=True  return_stdout=False
+    Should Be Equal As Integers    ${rc}  0
+    ${config} =    Run task    module/${module_id}/get-configuration    {}
+    Should Be Equal    ${config['host']}    dp.fqdn.test
     Retry test    Backend URL is reachable
 
 Verify dependencytrack frontend title

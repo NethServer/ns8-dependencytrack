@@ -23,7 +23,7 @@
       "matchPackageNames": [
         "nginx"
       ],
-      "allowedVersions": "<1.31"
+      "allowedVersions": "1.30.*"
     }
   ]
 }
